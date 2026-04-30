@@ -1,0 +1,5 @@
+ai-coworker
+*.exe
+.env
+.idea/
+vendor/

@@ -1,0 +1,29 @@
+database:
+  url: "postgres://ai_coworker:ai_coworker@localhost:5432/ai_coworker?sslmode=disable"
+
+llm:
+  provider: "claude"
+  api_key: "${ANTHROPIC_API_KEY}"
+  model: "claude-sonnet-4-20250514"
+
+slack:
+  enabled: false
+  app_token: "${SLACK_APP_TOKEN}"
+  bot_token: "${SLACK_BOT_TOKEN}"
+
+github:
+  enabled: false
+  app_id: 0
+  private_key: "${GITHUB_PRIVATE_KEY}"
+  webhook_secret: "${GITHUB_WEBHOOK_SECRET}"
+  bot_username: "ai-coworker[bot]"
+
+sandbox:
+  runtime: "docker"
+  image: "ubuntu:22.04"
+  timeout_seconds: 600
+  cpu_limit: "2"
+  memory_limit: "2Gi"
+  namespace: ""
+
+workers: 4
