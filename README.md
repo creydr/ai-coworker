@@ -45,13 +45,15 @@ make dev-db
 
 This runs PostgreSQL 16 via Docker Compose. The schema is applied automatically on first startup.
 
-### 2. Build the sandbox image
+### 2. Sandbox image
+
+Pre-built multi-arch images are published to `quay.io/creydr/ai-coworker-sandbox` on every push to main. The default config already references this image.
+
+To build locally instead:
 
 ```sh
 make sandbox-image
 ```
-
-This builds the `ai-coworker-sandbox:latest` Docker image used for code execution. It contains Node.js, git, the GitHub CLI, and Claude Code.
 
 ### 3. Configure
 
@@ -75,7 +77,7 @@ github:
 
 sandbox:
   runtime: "docker"
-  image: "ai-coworker-sandbox:latest"
+  image: "quay.io/creydr/ai-coworker-sandbox:latest"
   timeout_seconds: 600
   cpu_limit: "2"
   memory_limit: "2Gi"
