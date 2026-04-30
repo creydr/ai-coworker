@@ -13,7 +13,9 @@ import (
 	"github.com/creydr/ai-coworker/internal/engine"
 	"github.com/creydr/ai-coworker/internal/executor/claudecode"
 	"github.com/creydr/ai-coworker/internal/executor/llmexec"
+	"github.com/creydr/ai-coworker/internal/llm"
 	"github.com/creydr/ai-coworker/internal/llm/claude"
+	"github.com/creydr/ai-coworker/internal/llm/vertex"
 	"github.com/creydr/ai-coworker/internal/sandbox/docker"
 	"github.com/creydr/ai-coworker/internal/store"
 )
@@ -48,8 +50,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 4. Create Claude LLM provider.
-	llmProvider := claude.New(cfg.LLM.APIKey, cfg.LLM.Model)
+	// 4. Create LLM provider.
+	var llmProvider llm.Provider
+	switch cfg.LLM.Provider {
+	case "vertex":
+		var err error
+		llmProvider, err = vertex.New(ctx, cfg.LLM.Vertex.ProjectID, cfg.LLM.Vertex.Region, cfg.LLM.Model)
+		if err != nil {
+			slog.Error("failed to create vertex LLM provider", "error", err)
+			os.Exit(1)
+		}
+	default:
+		llmProvider = claude.New(cfg.LLM.APIKey, cfg.LLM.Model)
+	}
 
 	// 5. Create Router with the store.
 	router := engine.NewRouter(db)
