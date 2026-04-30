@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 )
@@ -56,6 +58,11 @@ func Load(path string) (*Config, error) {
 	if err := k.Load(file.Provider(path), yaml.Parser()); err != nil {
 		return nil, fmt.Errorf("loading config from %s: %w", path, err)
 	}
+
+	k.Load(env.Provider("AI_COWORKER_", ".", func(s string) string {
+		return strings.ToLower(strings.ReplaceAll(
+			strings.TrimPrefix(s, "AI_COWORKER_"), "_", "."))
+	}), nil)
 
 	cfg := &Config{}
 	if err := k.Unmarshal("", cfg); err != nil {
