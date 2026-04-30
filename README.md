@@ -100,6 +100,7 @@ Secrets and deployment-specific values must be set via environment variables:
 | `AI_COWORKER_SLACK_BOT_TOKEN` | Slack bot token (`xoxb-...`) |
 | `AI_COWORKER_LLM_VERTEX_PROJECT_ID` | Google Cloud project ID (Vertex AI provider) |
 | `AI_COWORKER_LLM_VERTEX_REGION` | Vertex AI region (defaults to `global`) |
+| `AI_COWORKER_LLM_OPENAI_BASE_URL` | Base URL for OpenAI-compatible API |
 | `AI_COWORKER_DATABASE_URL` | PostgreSQL connection string (overrides config file) |
 
 #### LLM Providers
@@ -123,6 +124,17 @@ export AI_COWORKER_LLM_PROVIDER=vertex
 export AI_COWORKER_LLM_VERTEX_PROJECT_ID=my-gcp-project
 export AI_COWORKER_LLM_VERTEX_REGION=global  # optional, defaults to "global"
 export AI_COWORKER_LLM_MODEL=claude-sonnet-4-20250514
+```
+
+**OpenAI-compatible API (Red Hat MaaS, vLLM, etc.):**
+
+Works with any service that exposes an OpenAI-compatible chat completions endpoint.
+
+```sh
+export AI_COWORKER_LLM_PROVIDER=openai
+export AI_COWORKER_LLM_OPENAI_BASE_URL=https://my-maas-endpoint.example.com/v1
+export AI_COWORKER_LLM_API_KEY=...  # if required by the endpoint
+export AI_COWORKER_LLM_MODEL=granite-3.3-8b
 ```
 
 ### 4. Run

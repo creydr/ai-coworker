@@ -28,6 +28,11 @@ type LLMConfig struct {
 	APIKey   string       `koanf:"api_key"`
 	Model    string       `koanf:"model"`
 	Vertex   VertexConfig `koanf:"vertex"`
+	OpenAI   OpenAIConfig `koanf:"openai"`
+}
+
+type OpenAIConfig struct {
+	BaseURL string `koanf:"base_url"`
 }
 
 type VertexConfig struct {
