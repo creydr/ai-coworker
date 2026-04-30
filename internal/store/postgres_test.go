@@ -1,3 +1,5 @@
+//go:build integration
+
 package store_test
 
 import (
@@ -28,7 +30,7 @@ func testStore(t *testing.T) *store.PostgresStore {
 	return s
 }
 
-func TestThreadLifecycle(t *testing.T) {
+func TestIntegrationThreadLifecycle(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
@@ -112,7 +114,7 @@ func TestThreadLifecycle(t *testing.T) {
 	}
 }
 
-func TestMessageLifecycle(t *testing.T) {
+func TestIntegrationMessageLifecycle(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
@@ -189,7 +191,7 @@ func TestMessageLifecycle(t *testing.T) {
 	}
 }
 
-func TestTaskClaimAndUpdate(t *testing.T) {
+func TestIntegrationTaskClaimAndUpdate(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
