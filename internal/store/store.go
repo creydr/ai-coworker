@@ -1,0 +1,43 @@
+package store
+
+import (
+	"context"
+
+	"github.com/creydr/ai-coworker/internal/domain"
+)
+
+// Store defines the persistence interface for the AI coworker.
+type Store interface {
+	// GetThread retrieves a thread by its ID.
+	GetThread(ctx context.Context, id string) (*domain.Thread, error)
+
+	// GetThreadByChannelRef finds a thread by its channel reference fields.
+	GetThreadByChannelRef(ctx context.Context, channel, channelID, threadTS string) (*domain.Thread, error)
+
+	// CreateThread persists a new thread and populates its ID.
+	CreateThread(ctx context.Context, t *domain.Thread) error
+
+	// UpdateThreadStatus changes the status of an existing thread.
+	UpdateThreadStatus(ctx context.Context, id string, status domain.ThreadStatus) error
+
+	// GetMessages returns all messages for a thread ordered by created_at.
+	GetMessages(ctx context.Context, threadID string) ([]domain.Message, error)
+
+	// CreateMessage persists a new message and populates its ID.
+	CreateMessage(ctx context.Context, m *domain.Message) error
+
+	// CreateTask persists a new task and populates its ID.
+	CreateTask(ctx context.Context, t *domain.Task) error
+
+	// ClaimNextTask atomically picks the oldest pending task and assigns it to workerID.
+	ClaimNextTask(ctx context.Context, workerID string) (*domain.Task, error)
+
+	// UpdateTask saves changes to an existing task.
+	UpdateTask(ctx context.Context, t *domain.Task) error
+
+	// Migrate runs all database migrations.
+	Migrate(ctx context.Context) error
+
+	// Close releases all resources held by the store.
+	Close() error
+}

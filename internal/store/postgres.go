@@ -1,0 +1,244 @@
+package store
+
+import (
+	"context"
+	_ "embed"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/creydr/ai-coworker/internal/domain"
+)
+
+//go:embed migrations/001_initial.sql
+var migrationSQL string
+
+// scannable is satisfied by both pgx.Row and pgx.Rows.
+type scannable interface {
+	Scan(dest ...any) error
+}
+
+// PostgresStore implements Store backed by PostgreSQL.
+type PostgresStore struct {
+	pool *pgxpool.Pool
+}
+
+var _ Store = (*PostgresStore)(nil)
+
+// NewPostgresStore creates a new PostgresStore, establishing and verifying the
+// connection pool.
+func NewPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, error) {
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("creating pool: %w", err)
+	}
+
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("pinging database: %w", err)
+	}
+
+	return &PostgresStore{pool: pool}, nil
+}
+
+// Migrate runs all embedded SQL migrations.
+func (s *PostgresStore) Migrate(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, migrationSQL)
+	if err != nil {
+		return fmt.Errorf("running migrations: %w", err)
+	}
+	return nil
+}
+
+// Close releases the connection pool.
+func (s *PostgresStore) Close() error {
+	s.pool.Close()
+	return nil
+}
+
+// ---------- threads ----------
+
+func scanThread(row scannable) (*domain.Thread, error) {
+	var t domain.Thread
+	err := row.Scan(
+		&t.ID,
+		&t.ChannelRef.Channel,
+		&t.ChannelRef.ChannelID,
+		&t.ChannelRef.ThreadTS,
+		&t.ChannelRef.Repo,
+		&t.ChannelRef.IssueNum,
+		&t.Status,
+		&t.CreatedAt,
+		&t.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+const threadColumns = `id, channel, channel_id, thread_ts, repo, issue_num, status, created_at, updated_at`
+
+func (s *PostgresStore) GetThread(ctx context.Context, id string) (*domain.Thread, error) {
+	row := s.pool.QueryRow(ctx,
+		`SELECT `+threadColumns+` FROM threads WHERE id = $1`, id)
+	t, err := scanThread(row)
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("thread not found: %s", id)
+	}
+	return t, err
+}
+
+func (s *PostgresStore) GetThreadByChannelRef(ctx context.Context, channel, channelID, threadTS string) (*domain.Thread, error) {
+	row := s.pool.QueryRow(ctx,
+		`SELECT `+threadColumns+` FROM threads WHERE channel = $1 AND channel_id = $2 AND thread_ts = $3`,
+		channel, channelID, threadTS)
+	t, err := scanThread(row)
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("thread not found for channel ref: %s/%s/%s", channel, channelID, threadTS)
+	}
+	return t, err
+}
+
+func (s *PostgresStore) CreateThread(ctx context.Context, t *domain.Thread) error {
+	t.ID = uuid.New().String()
+	now := time.Now().UTC()
+	t.CreatedAt = now
+	t.UpdatedAt = now
+
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO threads (id, channel, channel_id, thread_ts, repo, issue_num, status, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		t.ID,
+		t.ChannelRef.Channel,
+		t.ChannelRef.ChannelID,
+		t.ChannelRef.ThreadTS,
+		t.ChannelRef.Repo,
+		t.ChannelRef.IssueNum,
+		t.Status,
+		t.CreatedAt,
+		t.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("inserting thread: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) UpdateThreadStatus(ctx context.Context, id string, status domain.ThreadStatus) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE threads SET status = $1, updated_at = $2 WHERE id = $3`,
+		status, time.Now().UTC(), id)
+	if err != nil {
+		return fmt.Errorf("updating thread status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("thread not found: %s", id)
+	}
+	return nil
+}
+
+// ---------- messages ----------
+
+func (s *PostgresStore) GetMessages(ctx context.Context, threadID string) ([]domain.Message, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, thread_id, role, content, created_at
+		 FROM messages
+		 WHERE thread_id = $1
+		 ORDER BY created_at ASC`, threadID)
+	if err != nil {
+		return nil, fmt.Errorf("querying messages: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []domain.Message
+	for rows.Next() {
+		var m domain.Message
+		if err := rows.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scanning message: %w", err)
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+func (s *PostgresStore) CreateMessage(ctx context.Context, m *domain.Message) error {
+	m.ID = uuid.New().String()
+	m.CreatedAt = time.Now().UTC()
+
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO messages (id, thread_id, role, content, created_at)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		m.ID, m.ThreadID, m.Role, m.Content, m.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("inserting message: %w", err)
+	}
+	return nil
+}
+
+// ---------- tasks ----------
+
+func (s *PostgresStore) CreateTask(ctx context.Context, t *domain.Task) error {
+	t.ID = uuid.New().String()
+	now := time.Now().UTC()
+	t.CreatedAt = now
+	t.UpdatedAt = now
+
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO tasks (id, thread_id, intent, status, input, result, worker_id, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		t.ID, t.ThreadID, t.Intent, t.Status, t.Input, t.Result, t.WorkerID, t.CreatedAt, t.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("inserting task: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) ClaimNextTask(ctx context.Context, workerID string) (*domain.Task, error) {
+	row := s.pool.QueryRow(ctx,
+		`UPDATE tasks
+		 SET status = 'in_progress', worker_id = $1, updated_at = $2
+		 WHERE id = (
+		     SELECT id FROM tasks
+		     WHERE status = 'pending'
+		     ORDER BY created_at
+		     LIMIT 1
+		     FOR UPDATE SKIP LOCKED
+		 )
+		 RETURNING id, thread_id, intent, status, input, result, worker_id, created_at, updated_at`,
+		workerID, time.Now().UTC())
+
+	var t domain.Task
+	err := row.Scan(
+		&t.ID, &t.ThreadID, &t.Intent, &t.Status,
+		&t.Input, &t.Result, &t.WorkerID,
+		&t.CreatedAt, &t.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil // no pending tasks
+	}
+	if err != nil {
+		return nil, fmt.Errorf("claiming task: %w", err)
+	}
+	return &t, nil
+}
+
+func (s *PostgresStore) UpdateTask(ctx context.Context, t *domain.Task) error {
+	t.UpdatedAt = time.Now().UTC()
+
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE tasks
+		 SET intent = $1, status = $2, input = $3, result = $4, worker_id = $5, updated_at = $6
+		 WHERE id = $7`,
+		t.Intent, t.Status, t.Input, t.Result, t.WorkerID, t.UpdatedAt, t.ID)
+	if err != nil {
+		return fmt.Errorf("updating task: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("task not found: %s", t.ID)
+	}
+	return nil
+}
