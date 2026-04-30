@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
+	ghinstallation "github.com/bradleyfalzon/ghinstallation/v2"
 	gh "github.com/google/go-github/v68/github"
 
 	"github.com/creydr/ai-coworker/internal/adapter"
@@ -15,23 +17,45 @@ import (
 )
 
 type Adapter struct {
-	client        *gh.Client
-	webhookSecret []byte
-	botUsername   string
-	server        *http.Server
+	appsTransport       *ghinstallation.AppsTransport
+	installationClients sync.Map // maps int64 installationID → *gh.Client
+	repoInstallations   sync.Map // maps string repo → int64 installationID
+	webhookSecret       []byte
+	botUsername         string
+	server              *http.Server
 }
 
-func New(webhookSecret, botUsername string) *Adapter {
+func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername string) (*Adapter, error) {
+	atr, err := ghinstallation.NewAppsTransport(http.DefaultTransport, appID, privateKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("creating GitHub Apps transport: %w", err)
+	}
+
 	return &Adapter{
-		client:        gh.NewClient(nil),
+		appsTransport: atr,
 		webhookSecret: []byte(webhookSecret),
 		botUsername:   botUsername,
-	}
+	}, nil
 }
 
-func (a *Adapter) WithClient(client *gh.Client) *Adapter {
-	a.client = client
-	return a
+func (a *Adapter) getInstallationClient(installationID int64) *gh.Client {
+	if v, ok := a.installationClients.Load(installationID); ok {
+		return v.(*gh.Client)
+	}
+
+	itr := ghinstallation.NewFromAppsTransport(a.appsTransport, installationID)
+	client := gh.NewClient(&http.Client{Transport: itr})
+	a.installationClients.Store(installationID, client)
+	return client
+}
+
+func (a *Adapter) getClientForRepo(repo string) (*gh.Client, error) {
+	v, ok := a.repoInstallations.Load(repo)
+	if !ok {
+		return nil, fmt.Errorf("no installation ID known for repo %q", repo)
+	}
+	installationID := v.(int64)
+	return a.getInstallationClient(installationID), nil
 }
 
 func (a *Adapter) Name() string {
@@ -79,21 +103,33 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 
 	switch e := event.(type) {
 	case *gh.IssueCommentEvent:
-		if err := a.handleIssueComment(ctx, e, handler); err != nil {
+		installationID := e.GetInstallation().GetID()
+		repoFullName := e.GetRepo().GetFullName()
+		a.repoInstallations.Store(repoFullName, installationID)
+
+		if err := a.handleIssueComment(ctx, e, installationID, handler); err != nil {
 			log.Printf("error handling issue comment event: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 
 	case *gh.PullRequestReviewCommentEvent:
-		if err := a.handlePRReviewComment(ctx, e, handler); err != nil {
+		installationID := e.GetInstallation().GetID()
+		repoFullName := e.GetRepo().GetFullName()
+		a.repoInstallations.Store(repoFullName, installationID)
+
+		if err := a.handlePRReviewComment(ctx, e, installationID, handler); err != nil {
 			log.Printf("error handling PR review comment event: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 
 	case *gh.PullRequestReviewEvent:
-		if err := a.handlePRReview(ctx, e, handler); err != nil {
+		installationID := e.GetInstallation().GetID()
+		repoFullName := e.GetRepo().GetFullName()
+		a.repoInstallations.Store(repoFullName, installationID)
+
+		if err := a.handlePRReview(ctx, e, installationID, handler); err != nil {
 			log.Printf("error handling PR review event: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -106,7 +142,7 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 	w.WriteHeader(http.StatusOK)
 }
 
-func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEvent, handler adapter.EventHandler) error {
+func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEvent, installationID int64, handler adapter.EventHandler) error {
 	if e.GetAction() != "created" {
 		return nil
 	}
@@ -135,17 +171,18 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 		UserID:   e.GetComment().GetUser().GetLogin(),
 		Content:  content,
 		Metadata: map[string]string{
-			"type":      "issue_comment",
-			"repo":      repoFullName,
-			"issue_num": strconv.Itoa(issueNum),
-			"is_pr":     strconv.FormatBool(isPR),
+			"type":            "issue_comment",
+			"repo":            repoFullName,
+			"issue_num":       strconv.Itoa(issueNum),
+			"is_pr":           strconv.FormatBool(isPR),
+			"installation_id": strconv.FormatInt(installationID, 10),
 		},
 	}
 
 	return handler(ctx, incoming)
 }
 
-func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestReviewCommentEvent, handler adapter.EventHandler) error {
+func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestReviewCommentEvent, installationID int64, handler adapter.EventHandler) error {
 	if e.GetAction() != "created" {
 		return nil
 	}
@@ -165,18 +202,19 @@ func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestRe
 		UserID:   e.GetComment().GetUser().GetLogin(),
 		Content:  e.GetComment().GetBody(),
 		Metadata: map[string]string{
-			"type":      "review_comment",
-			"repo":      repoFullName,
-			"issue_num": strconv.Itoa(prNum),
-			"is_pr":     "true",
-			"path":      e.GetComment().GetPath(),
+			"type":            "review_comment",
+			"repo":            repoFullName,
+			"issue_num":       strconv.Itoa(prNum),
+			"is_pr":           "true",
+			"path":            e.GetComment().GetPath(),
+			"installation_id": strconv.FormatInt(installationID, 10),
 		},
 	}
 
 	return handler(ctx, incoming)
 }
 
-func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEvent, handler adapter.EventHandler) error {
+func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEvent, installationID int64, handler adapter.EventHandler) error {
 	if e.GetAction() != "submitted" {
 		return nil
 	}
@@ -195,11 +233,12 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 		UserID:   e.GetReview().GetUser().GetLogin(),
 		Content:  e.GetReview().GetBody(),
 		Metadata: map[string]string{
-			"type":         "review",
-			"repo":         repoFullName,
-			"issue_num":    strconv.Itoa(prNum),
-			"is_pr":        "true",
-			"review_state": e.GetReview().GetState(),
+			"type":            "review",
+			"repo":            repoFullName,
+			"issue_num":       strconv.Itoa(prNum),
+			"is_pr":           "true",
+			"review_state":    e.GetReview().GetState(),
+			"installation_id": strconv.FormatInt(installationID, 10),
 		},
 	}
 
@@ -212,11 +251,16 @@ func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, messa
 		return err
 	}
 
+	client, err := a.getClientForRepo(ref.Repo)
+	if err != nil {
+		return err
+	}
+
 	comment := &gh.IssueComment{
 		Body: gh.Ptr(message),
 	}
 
-	_, _, err = a.client.Issues.CreateComment(ctx, owner, repo, ref.IssueNum, comment)
+	_, _, err = client.Issues.CreateComment(ctx, owner, repo, ref.IssueNum, comment)
 	if err != nil {
 		return fmt.Errorf("failed to create issue comment: %w", err)
 	}
@@ -230,12 +274,36 @@ func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error 
 		return err
 	}
 
-	_, _, err = a.client.Reactions.CreateIssueCommentReaction(ctx, owner, repo, ref.CommentID, "eyes")
+	client, err := a.getClientForRepo(ref.Repo)
+	if err != nil {
+		return err
+	}
+
+	_, _, err = client.Reactions.CreateIssueCommentReaction(ctx, owner, repo, ref.CommentID, "eyes")
 	if err != nil {
 		return fmt.Errorf("failed to create reaction: %w", err)
 	}
 
 	return nil
+}
+
+func (a *Adapter) CreateInstallationToken(ctx context.Context, installationID int64) (string, error) {
+	client := a.getInstallationClient(installationID)
+
+	token, _, err := client.Apps.CreateInstallationToken(ctx, installationID, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create installation token: %w", err)
+	}
+
+	return token.GetToken(), nil
+}
+
+func (a *Adapter) CreateInstallationTokenForRepo(ctx context.Context, repo string) (string, error) {
+	v, ok := a.repoInstallations.Load(repo)
+	if !ok {
+		return "", fmt.Errorf("no installation ID known for repo %q", repo)
+	}
+	return a.CreateInstallationToken(ctx, v.(int64))
 }
 
 func splitRepo(fullName string) (owner, repo string, err error) {

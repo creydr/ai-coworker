@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/creydr/ai-coworker/internal/sandbox"
 	"github.com/docker/docker/api/types/container"
@@ -37,7 +39,33 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 		Env:   env,
 	}
 
-	hostCfg := &container.HostConfig{}
+	var resources container.Resources
+
+	if req.CPULimit != "" {
+		cpuFloat, err := strconv.ParseFloat(req.CPULimit, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CPU limit %q: %w", req.CPULimit, err)
+		}
+		resources.NanoCPUs = int64(cpuFloat * 1e9)
+	}
+
+	if req.MemLimit != "" {
+		mem, err := parseMemLimit(req.MemLimit)
+		if err != nil {
+			return nil, fmt.Errorf("invalid memory limit %q: %w", req.MemLimit, err)
+		}
+		resources.Memory = mem
+	}
+
+	hostCfg := &container.HostConfig{
+		Resources: resources,
+	}
+
+	if req.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(req.Timeout)*time.Second)
+		defer cancel()
+	}
 
 	resp, err := r.client.ContainerCreate(ctx, cfg, hostCfg, nil, nil, "")
 	if err != nil {
@@ -45,7 +73,8 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 	}
 
 	defer func() {
-		_ = r.client.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+		// Use a background context for cleanup so it succeeds even if ctx is cancelled.
+		_ = r.client.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{Force: true})
 	}()
 
 	if err := r.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
@@ -112,7 +141,7 @@ func buildCmd(req sandbox.ExecRequest) []string {
 	if req.Branch != "" {
 		cloneCmd += " -b " + req.Branch
 	}
-	cloneCmd += " " + req.CloneURL + " /workspace/repo && cd /workspace/repo"
+	cloneCmd += " " + shellescape(req.CloneURL) + " /workspace/repo && cd /workspace/repo"
 
 	shellScript := strings.Join([]string{
 		cloneCmd,
@@ -120,4 +149,26 @@ func buildCmd(req sandbox.ExecRequest) []string {
 	}, " && ")
 
 	return []string{"/bin/sh", "-c", shellScript}
+}
+
+func shellescape(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+func parseMemLimit(s string) (int64, error) {
+	if strings.HasSuffix(s, "Gi") {
+		val, err := strconv.ParseFloat(strings.TrimSuffix(s, "Gi"), 64)
+		if err != nil {
+			return 0, err
+		}
+		return int64(val * 1024 * 1024 * 1024), nil
+	}
+	if strings.HasSuffix(s, "Mi") {
+		val, err := strconv.ParseFloat(strings.TrimSuffix(s, "Mi"), 64)
+		if err != nil {
+			return 0, err
+		}
+		return int64(val * 1024 * 1024), nil
+	}
+	return 0, fmt.Errorf("unsupported memory unit in %q (use Mi or Gi)", s)
 }

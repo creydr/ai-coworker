@@ -67,8 +67,14 @@ func main() {
 	}
 
 	// 7. If GitHub is enabled: create adapter, register, start in goroutine.
+	var githubAdapter *github.Adapter
 	if cfg.GitHub.Enabled {
-		githubAdapter := github.New(cfg.GitHub.WebhookSecret, cfg.GitHub.BotUsername)
+		var err error
+		githubAdapter, err = github.New(cfg.GitHub.AppID, []byte(cfg.GitHub.PrivateKey), cfg.GitHub.WebhookSecret, cfg.GitHub.BotUsername)
+		if err != nil {
+			slog.Error("failed to create github adapter", "error", err)
+			os.Exit(1)
+		}
 		router.RegisterAdapter(githubAdapter)
 		go func() {
 			if err := githubAdapter.Start(ctx, router.HandleEvent); err != nil {
@@ -86,8 +92,18 @@ func main() {
 	}
 
 	// 9. Create Claude Code executor with sandbox runtime.
-	codeExec := claudecode.New(sandboxRuntime, cfg.Sandbox.Image, map[string]string{
-		"ANTHROPIC_API_KEY": cfg.LLM.APIKey,
+	var githubTokenFunc func(ctx context.Context, repo string) (string, error)
+	if githubAdapter != nil {
+		githubTokenFunc = githubAdapter.CreateInstallationTokenForRepo
+	}
+	codeExec := claudecode.New(claudecode.Config{
+		Runtime:         sandboxRuntime,
+		Image:           cfg.Sandbox.Image,
+		EnvVars:         map[string]string{"ANTHROPIC_API_KEY": cfg.LLM.APIKey},
+		TimeoutSeconds:  cfg.Sandbox.TimeoutSeconds,
+		CPULimit:        cfg.Sandbox.CPULimit,
+		MemoryLimit:     cfg.Sandbox.MemoryLimit,
+		GitHubTokenFunc: githubTokenFunc,
 	})
 
 	// 10. Create LLM executor with the provider.
