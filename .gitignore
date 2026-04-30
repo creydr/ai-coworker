@@ -1,4 +1,4 @@
-ai-coworker
+/ai-coworker
 *.exe
 .env
 .idea/
