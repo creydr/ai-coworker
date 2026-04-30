@@ -24,9 +24,15 @@ type DatabaseConfig struct {
 }
 
 type LLMConfig struct {
-	Provider string `koanf:"provider"`
-	APIKey   string `koanf:"api_key"`
-	Model    string `koanf:"model"`
+	Provider string       `koanf:"provider"`
+	APIKey   string       `koanf:"api_key"`
+	Model    string       `koanf:"model"`
+	Vertex   VertexConfig `koanf:"vertex"`
+}
+
+type VertexConfig struct {
+	ProjectID string `koanf:"project_id"`
+	Region    string `koanf:"region"`
 }
 
 type SlackConfig struct {
@@ -75,6 +81,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Sandbox.TimeoutSeconds == 0 {
 		cfg.Sandbox.TimeoutSeconds = 600
+	}
+	if cfg.LLM.Vertex.Region == "" {
+		cfg.LLM.Vertex.Region = "global"
 	}
 
 	return cfg, nil

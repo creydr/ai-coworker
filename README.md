@@ -98,7 +98,32 @@ Secrets and deployment-specific values must be set via environment variables:
 | `AI_COWORKER_SLACK_ENABLED` | Set to `true` to enable the Slack adapter |
 | `AI_COWORKER_SLACK_APP_TOKEN` | Slack app-level token (`xapp-...`) |
 | `AI_COWORKER_SLACK_BOT_TOKEN` | Slack bot token (`xoxb-...`) |
+| `AI_COWORKER_LLM_VERTEX_PROJECT_ID` | Google Cloud project ID (Vertex AI provider) |
+| `AI_COWORKER_LLM_VERTEX_REGION` | Vertex AI region (defaults to `global`) |
 | `AI_COWORKER_DATABASE_URL` | PostgreSQL connection string (overrides config file) |
+
+#### LLM Providers
+
+The `AI_COWORKER_LLM_PROVIDER` variable selects which LLM backend to use:
+
+**Claude API (default):**
+
+```sh
+export AI_COWORKER_LLM_PROVIDER=claude
+export AI_COWORKER_LLM_API_KEY=sk-ant-...
+export AI_COWORKER_LLM_MODEL=claude-sonnet-4-20250514
+```
+
+**Vertex AI (Claude on Google Cloud):**
+
+Uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials). Run `gcloud auth application-default login` first.
+
+```sh
+export AI_COWORKER_LLM_PROVIDER=vertex
+export AI_COWORKER_LLM_VERTEX_PROJECT_ID=my-gcp-project
+export AI_COWORKER_LLM_VERTEX_REGION=global  # optional, defaults to "global"
+export AI_COWORKER_LLM_MODEL=claude-sonnet-4-20250514
+```
 
 ### 4. Run
 
