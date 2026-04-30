@@ -15,6 +15,7 @@ import (
 	"github.com/creydr/ai-coworker/internal/executor/llmexec"
 	"github.com/creydr/ai-coworker/internal/llm"
 	"github.com/creydr/ai-coworker/internal/llm/claude"
+	llmopenai "github.com/creydr/ai-coworker/internal/llm/openai"
 	"github.com/creydr/ai-coworker/internal/llm/vertex"
 	"github.com/creydr/ai-coworker/internal/sandbox/docker"
 	"github.com/creydr/ai-coworker/internal/store"
@@ -60,6 +61,8 @@ func main() {
 			slog.Error("failed to create vertex LLM provider", "error", err)
 			os.Exit(1)
 		}
+	case "openai":
+		llmProvider = llmopenai.New(cfg.LLM.OpenAI.BaseURL, cfg.LLM.APIKey, cfg.LLM.Model)
 	default:
 		llmProvider = claude.New(cfg.LLM.APIKey, cfg.LLM.Model)
 	}
