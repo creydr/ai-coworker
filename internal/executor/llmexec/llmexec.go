@@ -1,0 +1,56 @@
+package llmexec
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/creydr/ai-coworker/internal/domain"
+	"github.com/creydr/ai-coworker/internal/executor"
+	"github.com/creydr/ai-coworker/internal/llm"
+)
+
+type Executor struct {
+	provider llm.Provider
+}
+
+func New(provider llm.Provider) *Executor {
+	return &Executor{
+		provider: provider,
+	}
+}
+
+func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*executor.Result, error) {
+	var messages []llm.Message
+
+	messages = append(messages, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "You are a helpful AI coworker. Assist with questions, discussions, and reviews related to software development. Be concise and helpful.",
+	})
+
+	for _, msg := range execCtx.Messages {
+		role := llm.RoleUser
+		if msg.Role == domain.RoleAssistant {
+			role = llm.RoleAssistant
+		}
+		messages = append(messages, llm.Message{
+			Role:    role,
+			Content: msg.Content,
+		})
+	}
+
+	if execCtx.Task != nil && execCtx.Task.Input != "" {
+		messages = append(messages, llm.Message{
+			Role:    llm.RoleUser,
+			Content: execCtx.Task.Input,
+		})
+	}
+
+	response, err := e.provider.Chat(ctx, messages)
+	if err != nil {
+		return nil, fmt.Errorf("LLM chat failed: %w", err)
+	}
+
+	return &executor.Result{
+		Response: response,
+	}, nil
+}

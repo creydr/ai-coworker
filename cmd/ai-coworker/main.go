@@ -1,0 +1,109 @@
+package main
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/creydr/ai-coworker/internal/adapter/github"
+	"github.com/creydr/ai-coworker/internal/adapter/slack"
+	"github.com/creydr/ai-coworker/internal/config"
+	"github.com/creydr/ai-coworker/internal/engine"
+	"github.com/creydr/ai-coworker/internal/executor/claudecode"
+	"github.com/creydr/ai-coworker/internal/executor/llmexec"
+	"github.com/creydr/ai-coworker/internal/llm/claude"
+	"github.com/creydr/ai-coworker/internal/sandbox/docker"
+	"github.com/creydr/ai-coworker/internal/store"
+)
+
+func main() {
+	// 1. Load config from config.yaml or first CLI argument.
+	cfgPath := "config.yaml"
+	if len(os.Args) > 1 {
+		cfgPath = os.Args[1]
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
+	}
+
+	// 2. Set up signal handling.
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// 3. Create PostgresStore, connect, migrate, defer close.
+	db, err := store.NewPostgresStore(ctx, cfg.Database.URL)
+	if err != nil {
+		slog.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	if err := db.Migrate(ctx); err != nil {
+		slog.Error("failed to run migrations", "error", err)
+		os.Exit(1)
+	}
+
+	// 4. Create Claude LLM provider.
+	llmProvider := claude.New(cfg.LLM.APIKey, cfg.LLM.Model)
+
+	// 5. Create Router with the store.
+	router := engine.NewRouter(db)
+
+	// 6. If Slack is enabled: create adapter, register, start in goroutine.
+	if cfg.Slack.Enabled {
+		slackAdapter := slack.New(cfg.Slack.AppToken, cfg.Slack.BotToken)
+		router.RegisterAdapter(slackAdapter)
+		go func() {
+			if err := slackAdapter.Start(ctx, router.HandleEvent); err != nil {
+				slog.Error("slack adapter stopped", "error", err)
+			}
+		}()
+		slog.Info("slack adapter enabled")
+	}
+
+	// 7. If GitHub is enabled: create adapter, register, start in goroutine.
+	if cfg.GitHub.Enabled {
+		githubAdapter := github.New(cfg.GitHub.WebhookSecret, cfg.GitHub.BotUsername)
+		router.RegisterAdapter(githubAdapter)
+		go func() {
+			if err := githubAdapter.Start(ctx, router.HandleEvent); err != nil {
+				slog.Error("github adapter stopped", "error", err)
+			}
+		}()
+		slog.Info("github adapter enabled")
+	}
+
+	// 8. Create Docker sandbox runtime.
+	sandboxRuntime, err := docker.New()
+	if err != nil {
+		slog.Error("failed to create docker sandbox runtime", "error", err)
+		os.Exit(1)
+	}
+
+	// 9. Create Claude Code executor with sandbox runtime.
+	codeExec := claudecode.New(sandboxRuntime, cfg.Sandbox.Image, map[string]string{
+		"ANTHROPIC_API_KEY": cfg.LLM.APIKey,
+	})
+
+	// 10. Create LLM executor with the provider.
+	llmExec := llmexec.New(llmProvider)
+
+	// 11. Create IntentClassifier with the provider.
+	classifier := engine.NewIntentClassifier(llmProvider)
+
+	// 12. Create WorkerPool with all components.
+	pool := engine.NewWorkerPool(db, router, classifier, codeExec, llmExec, cfg.Workers)
+
+	// 13. Start worker pool.
+	pool.Start(ctx)
+
+	// 14. Log startup, wait for shutdown signal.
+	slog.Info("ai-coworker started", "workers", cfg.Workers, "llm_provider", cfg.LLM.Provider, "llm_model", cfg.LLM.Model)
+	<-ctx.Done()
+	slog.Info("ai-coworker shutting down")
+}
