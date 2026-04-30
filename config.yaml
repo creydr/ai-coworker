@@ -13,7 +13,7 @@ github:
 
 sandbox:
   runtime: "docker"
-  image: "ai-coworker-sandbox:latest"
+  image: "quay.io/creydr/ai-coworker-sandbox:latest"
   timeout_seconds: 600
   cpu_limit: "2"
   memory_limit: "2Gi"
