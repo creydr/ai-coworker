@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +34,55 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.LLM.Vertex.Region != "global" {
 		t.Errorf("LLM.Vertex.Region = %q, want %q", cfg.LLM.Vertex.Region, "global")
+	}
+	if cfg.Sandbox.Runtime != "docker" {
+		t.Errorf("Sandbox.Runtime = %q, want %q", cfg.Sandbox.Runtime, "docker")
+	}
+}
+
+func TestLoad_SandboxRuntimeValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  string
+		wantErr string
+	}{
+		{
+			name:   "docker runtime is valid",
+			config: minConfig + "sandbox:\n  runtime: docker\n",
+		},
+		{
+			name:   "kubernetes runtime with namespace is valid",
+			config: minConfig + "sandbox:\n  runtime: kubernetes\n  namespace: ai-coworker\n",
+		},
+		{
+			name:    "kubernetes runtime without namespace is invalid",
+			config:  minConfig + "sandbox:\n  runtime: kubernetes\n",
+			wantErr: "sandbox.namespace is required",
+		},
+		{
+			name:    "unknown runtime is invalid",
+			config:  minConfig + "sandbox:\n  runtime: podman\n",
+			wantErr: "sandbox.runtime must be",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeTempConfig(t, tt.config)
+			_, err := Load(path)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }
 

@@ -19,6 +19,13 @@ const (
 	defaultSandboxTimeoutSeconds = 600
 	// defaultVertexRegion is the default Google Cloud region for Vertex AI.
 	defaultVertexRegion = "global"
+	// defaultSandboxRuntime is the default sandbox runtime.
+	defaultSandboxRuntime = RuntimeDocker
+
+	// RuntimeDocker is the Docker sandbox runtime.
+	RuntimeDocker = "docker"
+	// RuntimeKubernetes is the Kubernetes sandbox runtime.
+	RuntimeKubernetes = "kubernetes"
 )
 
 type Config struct {
@@ -73,6 +80,7 @@ type SandboxConfig struct {
 	CPULimit       string `koanf:"cpu_limit"`
 	MemoryLimit    string `koanf:"memory_limit"`
 	Namespace      string `koanf:"namespace"`
+	ServiceAccount string `koanf:"service_account"`
 }
 
 func Load(path string) (*Config, error) {
@@ -108,6 +116,9 @@ func Load(path string) (*Config, error) {
 	if cfg.LLM.Vertex.Region == "" {
 		cfg.LLM.Vertex.Region = defaultVertexRegion
 	}
+	if cfg.Sandbox.Runtime == "" {
+		cfg.Sandbox.Runtime = defaultSandboxRuntime
+	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -139,6 +150,14 @@ func (c *Config) validate() error {
 		if c.LLM.OpenAI.BaseURL == "" {
 			return fmt.Errorf("llm.openai.base_url is required for openai provider")
 		}
+	}
+	switch c.Sandbox.Runtime {
+	case RuntimeDocker, RuntimeKubernetes:
+	default:
+		return fmt.Errorf("sandbox.runtime must be %q or %q, got %q", RuntimeDocker, RuntimeKubernetes, c.Sandbox.Runtime)
+	}
+	if c.Sandbox.Runtime == RuntimeKubernetes && c.Sandbox.Namespace == "" {
+		return fmt.Errorf("sandbox.namespace is required when sandbox.runtime is 'kubernetes'")
 	}
 	if c.GitHub.Enabled {
 		if c.GitHub.AppID == 0 {

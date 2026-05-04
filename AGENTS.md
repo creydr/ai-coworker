@@ -42,6 +42,7 @@ internal/
     openai/             OpenAI-compatible API
   sandbox/              Runtime interface
     docker/             Docker container runtime
+    kubernetes/         Kubernetes Job runtime
   store/                Store interface + PostgreSQL (migrations/)
 sandbox/                Dockerfile + entrypoint for sandbox image
 ```
