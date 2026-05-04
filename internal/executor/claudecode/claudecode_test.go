@@ -200,6 +200,47 @@ func TestExecute_NonZeroExitCode(t *testing.T) {
 	}
 }
 
+func TestExecute_PRBranch(t *testing.T) {
+	mock := &mockRuntime{
+		result: &sandbox.ExecResult{
+			Output:   "pushed to branch",
+			ExitCode: 0,
+		},
+	}
+
+	e := New(Config{
+		Runtime:        mock,
+		Image:          "test-image",
+		EnvVars:        map[string]string{},
+		TimeoutSeconds: 60,
+	})
+
+	execCtx := &executor.Context{
+		Thread: &domain.Thread{ID: "t-1"},
+		Task:   &domain.Task{ID: "task-1", Input: "fix the test"},
+		Event: &domain.IncomingEvent{
+			Metadata: map[string]string{
+				"repo":      "org/repo",
+				"is_pr":     "true",
+				"pr_branch": "feat/my-feature",
+				"issue_num": "7",
+			},
+		},
+	}
+
+	_, err := e.Execute(context.Background(), execCtx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if mock.request.Branch != "feat/my-feature" {
+		t.Errorf("Branch = %q, want %q", mock.request.Branch, "feat/my-feature")
+	}
+	if mock.request.CloneURL != "https://github.com/org/repo.git" {
+		t.Errorf("CloneURL = %q, want %q", mock.request.CloneURL, "https://github.com/org/repo.git")
+	}
+}
+
 func TestBuildPrompt(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -299,12 +340,63 @@ func TestBuildPrompt(t *testing.T) {
 			execCtx: &executor.Context{},
 			want: []string{
 				"AI coworker",
-				"pull request",
+				"create a new branch",
 			},
 			wantNot: []string{
 				"Repository:",
 				"Latest request:",
 				"Conversation history:",
+			},
+		},
+		{
+			name: "PR context shows PR branch instructions",
+			execCtx: &executor.Context{
+				Task: &domain.Task{Input: "fix this"},
+				Event: &domain.IncomingEvent{
+					Metadata: map[string]string{
+						"repo":      "org/repo",
+						"issue_num": "5",
+						"is_pr":     "true",
+					},
+				},
+			},
+			want: []string{
+				"Pull Request: #5",
+				"on the PR branch",
+			},
+			wantNot: []string{
+				"Issue: #5",
+				"create a new branch",
+			},
+		},
+		{
+			name: "issue context shows create branch instructions",
+			execCtx: &executor.Context{
+				Task: &domain.Task{Input: "fix this"},
+				Event: &domain.IncomingEvent{
+					Metadata: map[string]string{
+						"repo":      "org/repo",
+						"issue_num": "10",
+					},
+				},
+			},
+			want: []string{
+				"Issue: #10",
+				"create a new branch",
+			},
+			wantNot: []string{
+				"Pull Request:",
+				"on the PR branch",
+			},
+		},
+		{
+			name: "gh CLI hint is present",
+			execCtx: &executor.Context{
+				Task: &domain.Task{Input: "test"},
+			},
+			want: []string{
+				"gh",
+				"CLI",
 			},
 		},
 	}
