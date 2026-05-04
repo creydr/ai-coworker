@@ -23,6 +23,10 @@ func NewRef(channelID, threadTS string) domain.ChannelRef {
 }
 
 func ParseRef(ref domain.ChannelRef) SlackRef {
+	if ref.Properties == nil {
+		return SlackRef{}
+	}
+
 	return SlackRef{
 		ChannelID: ref.Properties["channel_id"],
 		ThreadTS:  ref.Properties["thread_ts"],

@@ -35,6 +35,10 @@ func WithComment(ref domain.ChannelRef, commentID int64, commentType string) dom
 }
 
 func ParseRef(ref domain.ChannelRef) GitHubRef {
+	if ref.Properties == nil {
+		return GitHubRef{}
+	}
+
 	r := GitHubRef{
 		Repo:        ref.Properties["repo"],
 		CommentType: ref.Properties["comment_type"],
