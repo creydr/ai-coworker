@@ -15,6 +15,7 @@ type Executor struct {
 	runtime         sandbox.Runtime
 	image           string
 	envVars         map[string]string
+	binds           []string
 	timeout         int
 	cpuLimit        string
 	memLimit        string
@@ -25,6 +26,7 @@ type Config struct {
 	Runtime         sandbox.Runtime
 	Image           string
 	EnvVars         map[string]string
+	Binds           []string
 	TimeoutSeconds  int
 	CPULimit        string
 	MemoryLimit     string
@@ -36,6 +38,7 @@ func New(cfg Config) *Executor {
 		runtime:         cfg.Runtime,
 		image:           cfg.Image,
 		envVars:         cfg.EnvVars,
+		binds:           cfg.Binds,
 		timeout:         cfg.TimeoutSeconds,
 		cpuLimit:        cfg.CPULimit,
 		memLimit:        cfg.MemoryLimit,
@@ -47,12 +50,14 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 	prompt := buildPrompt(execCtx)
 
 	cloneURL := ""
+	branch := ""
 	repo := ""
 	if execCtx.Event != nil && execCtx.Event.Metadata != nil {
 		repo = execCtx.Event.Metadata["repo"]
 		if repo != "" {
 			cloneURL = fmt.Sprintf("https://github.com/%s.git", repo)
 		}
+		branch = execCtx.Event.Metadata["pr_branch"]
 	}
 
 	// Copy envVars so we don't mutate the shared map.
@@ -74,8 +79,10 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 	req := sandbox.ExecRequest{
 		Image:    e.image,
 		CloneURL: cloneURL,
+		Branch:   branch,
 		Prompt:   prompt,
 		EnvVars:  envVars,
+		Binds:    e.binds,
 		Timeout:  e.timeout,
 		CPULimit: e.cpuLimit,
 		MemLimit: e.memLimit,
@@ -100,15 +107,22 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 func buildPrompt(execCtx *executor.Context) string {
 	var sb strings.Builder
 
-	sb.WriteString("You are an AI coworker that helps with software development tasks. ")
-	sb.WriteString("You have access to the repository and can make changes as needed.\n\n")
+	sb.WriteString("You are an AI coworker that helps with software development tasks.\n")
+	sb.WriteString("You have access to the repository and can make changes as needed.\n")
+	sb.WriteString("Use the `gh` CLI to fetch issue or PR details (e.g. `gh issue view <number>`).\n\n")
 
+	isPR := false
 	if execCtx.Event != nil && execCtx.Event.Metadata != nil {
 		if repo, ok := execCtx.Event.Metadata["repo"]; ok {
 			sb.WriteString(fmt.Sprintf("Repository: %s\n", repo))
 		}
-		if issue, ok := execCtx.Event.Metadata["issue"]; ok {
-			sb.WriteString(fmt.Sprintf("Issue: %s\n", issue))
+		if num, ok := execCtx.Event.Metadata["issue_num"]; ok {
+			if execCtx.Event.Metadata["is_pr"] == "true" {
+				sb.WriteString(fmt.Sprintf("Pull Request: #%s\n", num))
+				isPR = true
+			} else {
+				sb.WriteString(fmt.Sprintf("Issue: #%s\n", num))
+			}
 		}
 		sb.WriteString("\n")
 	}
@@ -129,7 +143,11 @@ func buildPrompt(execCtx *executor.Context) string {
 		sb.WriteString(fmt.Sprintf("Latest request: %s\n\n", execCtx.Task.Input))
 	}
 
-	sb.WriteString("If this task requires code changes, create a new branch and open a pull request with your changes.")
+	if isPR {
+		sb.WriteString("You are on the PR branch. Make changes and push directly to this branch.")
+	} else {
+		sb.WriteString("If this task requires code changes, create a new branch and open a pull request with your changes.")
+	}
 
 	return sb.String()
 }
