@@ -75,7 +75,6 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 			threadID := fmt.Sprintf("slack-%s-%s", mentionEvent.Channel, threadTS)
 
 			incomingEvent := domain.IncomingEvent{
-				Channel:    "slack",
 				ChannelRef: NewRef(mentionEvent.Channel, threadTS),
 				ThreadID:   threadID,
 				UserID:     mentionEvent.User,

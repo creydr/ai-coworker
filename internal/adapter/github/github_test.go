@@ -202,8 +202,8 @@ func TestHandleIssueComment(t *testing.T) {
 	}
 
 	// Verify IncomingEvent fields.
-	if captured.Channel != "github" {
-		t.Errorf("Channel = %q, want %q", captured.Channel, "github")
+	if captured.ChannelRef.Channel != "github" {
+		t.Errorf("ChannelRef.Channel = %q, want %q", captured.ChannelRef.Channel, "github")
 	}
 	expectedThreadID := fmt.Sprintf("github-%s-%d", repoFullName, issueNum)
 	if captured.ThreadID != expectedThreadID {
