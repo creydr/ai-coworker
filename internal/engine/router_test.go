@@ -40,14 +40,14 @@ func (m *mockStore) GetThread(ctx context.Context, id string) (*domain.Thread, e
 	if t, ok := m.threads[id]; ok {
 		return t, nil
 	}
-	return nil, fmt.Errorf("thread not found: %s", id)
+	return nil, fmt.Errorf("thread %s: %w", id, store.ErrNotFound)
 }
 
 func (m *mockStore) GetThreadByChannelRef(ctx context.Context, channel, threadKey string) (*domain.Thread, error) {
 	if m.getThreadByChannelFunc != nil {
 		return m.getThreadByChannelFunc(ctx, channel, threadKey)
 	}
-	return nil, fmt.Errorf("thread not found")
+	return nil, fmt.Errorf("thread %s/%s: %w", channel, threadKey, store.ErrNotFound)
 }
 
 func (m *mockStore) CreateThread(ctx context.Context, t *domain.Thread) error {

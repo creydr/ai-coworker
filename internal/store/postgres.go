@@ -98,7 +98,7 @@ func (s *PostgresStore) GetThread(ctx context.Context, id string) (*domain.Threa
 		`SELECT `+threadColumns+` FROM threads WHERE id = $1`, id)
 	t, err := scanThread(row)
 	if err == pgx.ErrNoRows {
-		return nil, fmt.Errorf("thread not found: %s", id)
+		return nil, fmt.Errorf("thread %s: %w", id, ErrNotFound)
 	}
 	return t, err
 }
@@ -109,7 +109,7 @@ func (s *PostgresStore) GetThreadByChannelRef(ctx context.Context, channel, thre
 		channel, threadKey)
 	t, err := scanThread(row)
 	if err == pgx.ErrNoRows {
-		return nil, fmt.Errorf("thread not found for channel ref: %s/%s", channel, threadKey)
+		return nil, fmt.Errorf("thread %s/%s: %w", channel, threadKey, ErrNotFound)
 	}
 	return t, err
 }
@@ -150,7 +150,7 @@ func (s *PostgresStore) UpdateThreadStatus(ctx context.Context, id string, statu
 		return fmt.Errorf("updating thread status: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("thread not found: %s", id)
+		return fmt.Errorf("thread %s: %w", id, ErrNotFound)
 	}
 	return nil
 }
@@ -267,7 +267,7 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, t *domain.Task) error {
 		return fmt.Errorf("updating task: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("task not found: %s", t.ID)
+		return fmt.Errorf("task %s: %w", t.ID, ErrNotFound)
 	}
 	return nil
 }
