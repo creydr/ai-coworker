@@ -10,6 +10,7 @@ type Task struct {
 	Input     string
 	Result    string
 	WorkerID  string
+	Metadata  map[string]string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

@@ -94,6 +94,7 @@ func (r *Router) HandleEvent(ctx context.Context, event domain.IncomingEvent) er
 		ThreadID: thread.ID,
 		Status:   domain.TaskPending,
 		Input:    event.Content,
+		Metadata: event.Metadata,
 	}
 	if err := r.store.CreateTask(ctx, task); err != nil {
 		return fmt.Errorf("creating task: %w", err)
