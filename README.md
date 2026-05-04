@@ -67,7 +67,7 @@ database:
 
 llm:
   provider: "claude"
-  model: "claude-sonnet-4-20250514"
+  model: "claude-sonnet-4-6"
 
 slack:
   enabled: false
@@ -112,7 +112,7 @@ The `AI_COWORKER__LLM__PROVIDER` variable selects which LLM backend to use:
 ```sh
 export AI_COWORKER__LLM__PROVIDER=claude
 export AI_COWORKER__LLM__API_KEY=sk-ant-...
-export AI_COWORKER__LLM__MODEL=claude-sonnet-4-20250514
+export AI_COWORKER__LLM__MODEL=claude-sonnet-4-6
 ```
 
 **Vertex AI (Claude on Google Cloud):**
@@ -123,7 +123,7 @@ Uses [Application Default Credentials](https://cloud.google.com/docs/authenticat
 export AI_COWORKER__LLM__PROVIDER=vertex
 export AI_COWORKER__LLM__VERTEX__PROJECT_ID=my-gcp-project
 export AI_COWORKER__LLM__VERTEX__REGION=global  # optional, defaults to "global"
-export AI_COWORKER__LLM__MODEL=claude-sonnet-4-20250514
+export AI_COWORKER__LLM__MODEL=claude-sonnet-4-6
 ```
 
 **OpenAI-compatible API (Red Hat MaaS, vLLM, etc.):**
@@ -251,8 +251,8 @@ TEST_DATABASE_URL="postgres://ai-coworker:password@localhost:5432/ai-coworker?ss
 cmd/ai-coworker/          Entry point
 internal/
   adapter/                Channel adapter interface
-    github/               GitHub App webhook adapter
-    slack/                Slack Socket Mode adapter
+    github/               GitHub App webhook adapter (ref.go for typed helpers)
+    slack/                Slack Socket Mode adapter (ref.go for typed helpers)
   config/                 Configuration loading (koanf)
   domain/                 Core types (Event, Thread, Task, Message)
   engine/                 Router, worker pool, intent classifier
@@ -261,8 +261,11 @@ internal/
     llmexec/              Direct LLM executor (Q&A)
   llm/                    LLM provider interface
     claude/               Anthropic Claude implementation
+    vertex/               Vertex AI (Claude on Google Cloud)
+    openai/               OpenAI-compatible API
   sandbox/                Sandbox runtime interface
     docker/               Docker container runtime
   store/                  Data store interface + PostgreSQL implementation
+    migrations/           SQL migration files
 sandbox/                  Dockerfile and entrypoint for sandbox image
 ```
