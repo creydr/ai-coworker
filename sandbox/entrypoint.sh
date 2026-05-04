@@ -1,4 +1,15 @@
 #!/bin/sh
-git config --global credential.helper '!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f'
-gh auth login --with-token <<< "${GITHUB_TOKEN}" 2>/dev/null || true
-exec claude --dangerously-skip-permissions -p "$@"
+if [ -n "${GITHUB_TOKEN}" ]; then
+  echo "https://x-access-token:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
+  git config --global credential.helper store
+  echo "${GITHUB_TOKEN}" | gh auth login --with-token 2>/dev/null || true
+fi
+if [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON}" ]; then
+  echo "${GOOGLE_APPLICATION_CREDENTIALS_JSON}" > /tmp/gcloud-adc.json
+  export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcloud-adc.json
+fi
+if [ -n "${CLONE_URL}" ]; then
+  git clone ${CLONE_BRANCH:+-b "$CLONE_BRANCH"} "$CLONE_URL" /workspace/repo
+  cd /workspace/repo
+fi
+cat /tmp/prompt.txt | claude --dangerously-skip-permissions -p -

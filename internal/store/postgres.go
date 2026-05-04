@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 
 //go:embed migrations/001_initial.sql
 var migrationSQL string
+
+//go:embed migrations/002_task_metadata.sql
+var migration002SQL string
 
 // scannable is satisfied by both pgx.Row and pgx.Rows.
 type scannable interface {
@@ -46,9 +50,10 @@ func NewPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, 
 
 // Migrate runs all embedded SQL migrations.
 func (s *PostgresStore) Migrate(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, migrationSQL)
-	if err != nil {
-		return fmt.Errorf("running migrations: %w", err)
+	for i, sql := range []string{migrationSQL, migration002SQL} {
+		if _, err := s.pool.Exec(ctx, sql); err != nil {
+			return fmt.Errorf("running migration %03d: %w", i+1, err)
+		}
 	}
 	return nil
 }
@@ -187,10 +192,15 @@ func (s *PostgresStore) CreateTask(ctx context.Context, t *domain.Task) error {
 	t.CreatedAt = now
 	t.UpdatedAt = now
 
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO tasks (id, thread_id, intent, status, input, result, worker_id, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		t.ID, t.ThreadID, t.Intent, t.Status, t.Input, t.Result, t.WorkerID, t.CreatedAt, t.UpdatedAt)
+	metadataJSON, err := encodeMetadata(t.Metadata)
+	if err != nil {
+		return fmt.Errorf("encoding task metadata: %w", err)
+	}
+
+	_, err = s.pool.Exec(ctx,
+		`INSERT INTO tasks (id, thread_id, intent, status, input, result, worker_id, metadata, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		t.ID, t.ThreadID, t.Intent, t.Status, t.Input, t.Result, t.WorkerID, metadataJSON, t.CreatedAt, t.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("inserting task: %w", err)
 	}
@@ -208,20 +218,25 @@ func (s *PostgresStore) ClaimNextTask(ctx context.Context, workerID string) (*do
 		     LIMIT 1
 		     FOR UPDATE SKIP LOCKED
 		 )
-		 RETURNING id, thread_id, intent, status, input, result, worker_id, created_at, updated_at`,
+		 RETURNING id, thread_id, intent, status, input, result, worker_id, metadata, created_at, updated_at`,
 		workerID, time.Now().UTC())
 
 	var t domain.Task
+	var metadataJSON []byte
 	err := row.Scan(
 		&t.ID, &t.ThreadID, &t.Intent, &t.Status,
-		&t.Input, &t.Result, &t.WorkerID,
+		&t.Input, &t.Result, &t.WorkerID, &metadataJSON,
 		&t.CreatedAt, &t.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {
-		return nil, nil // no pending tasks
+		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("claiming task: %w", err)
+	}
+	t.Metadata, err = decodeMetadata(metadataJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decoding task metadata: %w", err)
 	}
 	return &t, nil
 }
@@ -229,11 +244,16 @@ func (s *PostgresStore) ClaimNextTask(ctx context.Context, workerID string) (*do
 func (s *PostgresStore) UpdateTask(ctx context.Context, t *domain.Task) error {
 	t.UpdatedAt = time.Now().UTC()
 
+	metadataJSON, err := encodeMetadata(t.Metadata)
+	if err != nil {
+		return fmt.Errorf("encoding task metadata: %w", err)
+	}
+
 	tag, err := s.pool.Exec(ctx,
 		`UPDATE tasks
-		 SET intent = $1, status = $2, input = $3, result = $4, worker_id = $5, updated_at = $6
-		 WHERE id = $7`,
-		t.Intent, t.Status, t.Input, t.Result, t.WorkerID, t.UpdatedAt, t.ID)
+		 SET intent = $1, status = $2, input = $3, result = $4, worker_id = $5, metadata = $6, updated_at = $7
+		 WHERE id = $8`,
+		t.Intent, t.Status, t.Input, t.Result, t.WorkerID, metadataJSON, t.UpdatedAt, t.ID)
 	if err != nil {
 		return fmt.Errorf("updating task: %w", err)
 	}
@@ -241,4 +261,25 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, t *domain.Task) error {
 		return fmt.Errorf("task not found: %s", t.ID)
 	}
 	return nil
+}
+
+func encodeMetadata(m map[string]string) ([]byte, error) {
+	if m == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(m)
+}
+
+func decodeMetadata(data []byte) (map[string]string, error) {
+	if len(data) == 0 {
+		return map[string]string{}, nil
+	}
+	var m map[string]string
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		m = map[string]string{}
+	}
+	return m, nil
 }

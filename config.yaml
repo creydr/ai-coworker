@@ -1,5 +1,5 @@
 database:
-  url: "postgres://ai_coworker:ai_coworker@localhost:5432/ai_coworker?sslmode=disable"
+  url: "postgres://ai-coworker:password@localhost:5432/ai-coworker?sslmode=disable"
 
 llm:
   provider: "claude"

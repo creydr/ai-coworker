@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/creydr/ai-coworker/internal/domain"
@@ -61,13 +61,12 @@ func (wp *WorkerPool) runWorker(ctx context.Context, workerID string) {
 
 		task, err := wp.store.ClaimNextTask(ctx, workerID)
 		if err != nil {
-			if strings.Contains(err.Error(), "no rows") {
-				// No pending tasks — back off briefly.
-				time.Sleep(1 * time.Second)
-				continue
-			}
 			log.Printf("[%s] error claiming task: %v", workerID, err)
 			time.Sleep(5 * time.Second)
+			continue
+		}
+		if task == nil {
+			time.Sleep(1 * time.Second)
 			continue
 		}
 
@@ -89,12 +88,12 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		return
 	}
 
-	// Reconstruct an IncomingEvent from thread data for classification.
 	event := domain.IncomingEvent{
 		Channel:    thread.ChannelRef.Channel,
 		ChannelRef: thread.ChannelRef,
 		ThreadID:   thread.ID,
 		Content:    task.Input,
+		Metadata:   task.Metadata,
 	}
 
 	// Classify intent.
@@ -128,12 +127,14 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		Event:    &event,
 	}
 
+	log.Printf("[%s] executing task %s (intent=%s, repo=%s)", workerID, task.ID, intent, thread.ChannelRef.Repo)
 	result, err := exec.Execute(ctx, execCtx)
 	if err != nil {
 		wp.failTask(ctx, workerID, task, fmt.Errorf("executing task: %w", err))
 		wp.sendResponse(ctx, thread.ChannelRef, fmt.Sprintf("Sorry, I encountered an error while processing your request: %v", err))
 		return
 	}
+	log.Printf("[%s] task %s completed, response length=%d", workerID, task.ID, len(result.Response))
 
 	// Mark task as completed.
 	task.Status = domain.TaskCompleted
@@ -152,8 +153,21 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		log.Printf("[%s] error storing assistant message for task %s: %v", workerID, task.ID, err)
 	}
 
+	// Enrich the ChannelRef with task metadata for proper response routing.
+	responseRef := thread.ChannelRef
+	if task.Metadata != nil {
+		if ct, ok := task.Metadata["type"]; ok {
+			responseRef.CommentType = ct
+		}
+		if cid, ok := task.Metadata["comment_id"]; ok {
+			if id, err := strconv.ParseInt(cid, 10, 64); err == nil {
+				responseRef.CommentID = id
+			}
+		}
+	}
+
 	// Send the response via the adapter.
-	wp.sendResponse(ctx, thread.ChannelRef, result.Response)
+	wp.sendResponse(ctx, responseRef, result.Response)
 }
 
 func (wp *WorkerPool) failTask(ctx context.Context, workerID string, task *domain.Task, err error) {

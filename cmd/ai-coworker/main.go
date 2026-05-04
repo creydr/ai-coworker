@@ -97,7 +97,7 @@ func main() {
 				slog.Error("github adapter stopped", "error", err)
 			}
 		}()
-		slog.Info("github adapter enabled")
+		slog.Info("github adapter enabled", "app_id", cfg.GitHub.AppID, "private_key_len", len(cfg.GitHub.PrivateKey))
 	}
 
 	// 8. Create Docker sandbox runtime.
@@ -112,10 +112,30 @@ func main() {
 	if githubAdapter != nil {
 		githubTokenFunc = githubAdapter.CreateInstallationTokenForRepo
 	}
+	sandboxEnv := map[string]string{}
+	switch cfg.LLM.Provider {
+	case "vertex":
+		sandboxEnv["CLAUDE_CODE_USE_VERTEX"] = "1"
+		sandboxEnv["ANTHROPIC_VERTEX_PROJECT_ID"] = cfg.LLM.Vertex.ProjectID
+		sandboxEnv["ANTHROPIC_VERTEX_REGION"] = cfg.LLM.Vertex.Region
+		adcPath := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+		if adcPath == "" {
+			home, _ := os.UserHomeDir()
+			adcPath = home + "/.config/gcloud/application_default_credentials.json"
+		}
+		adcContent, err := os.ReadFile(adcPath)
+		if err != nil {
+			slog.Error("failed to read ADC credentials file", "path", adcPath, "error", err)
+			os.Exit(1)
+		}
+		sandboxEnv["GOOGLE_APPLICATION_CREDENTIALS_JSON"] = string(adcContent)
+	default:
+		sandboxEnv["ANTHROPIC_API_KEY"] = cfg.LLM.APIKey
+	}
 	codeExec := claudecode.New(claudecode.Config{
 		Runtime:         sandboxRuntime,
 		Image:           cfg.Sandbox.Image,
-		EnvVars:         map[string]string{"ANTHROPIC_API_KEY": cfg.LLM.APIKey},
+		EnvVars:         sandboxEnv,
 		TimeoutSeconds:  cfg.Sandbox.TimeoutSeconds,
 		CPULimit:        cfg.Sandbox.CPULimit,
 		MemoryLimit:     cfg.Sandbox.MemoryLimit,

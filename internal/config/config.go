@@ -70,9 +70,10 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("loading config from %s: %w", path, err)
 	}
 
-	k.Load(env.Provider("AI_COWORKER_", ".", func(s string) string {
-		return strings.ToLower(strings.ReplaceAll(
-			strings.TrimPrefix(s, "AI_COWORKER_"), "_", "."))
+	k.Load(env.Provider("AI_COWORKER__", ".", func(s string) string {
+		key := strings.TrimPrefix(s, "AI_COWORKER__")
+		key = strings.ToLower(strings.ReplaceAll(key, "__", "."))
+		return key
 	}), nil)
 
 	cfg := &Config{}
