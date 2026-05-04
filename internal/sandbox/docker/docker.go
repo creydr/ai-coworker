@@ -20,10 +20,12 @@ import (
 
 var _ sandbox.Runtime = (*Runtime)(nil)
 
+// Runtime implements the sandbox runtime interface using Docker containers
 type Runtime struct {
 	client *client.Client
 }
 
+// New creates a new Docker runtime using the environment's Docker configuration
 func New() (*Runtime, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {

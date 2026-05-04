@@ -9,10 +9,12 @@ import (
 	"github.com/creydr/ai-coworker/internal/llm"
 )
 
+// Executor runs tasks by sending conversation messages to an LLM provider
 type Executor struct {
 	provider llm.Provider
 }
 
+// New creates a new LLM executor using the given provider
 func New(provider llm.Provider) *Executor {
 	return &Executor{
 		provider: provider,

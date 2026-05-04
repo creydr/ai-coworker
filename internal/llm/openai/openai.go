@@ -10,11 +10,13 @@ import (
 	"github.com/openai/openai-go/option"
 )
 
+// Provider implements the LLM provider interface using an OpenAI-compatible API
 type Provider struct {
 	client *oai.Client
 	model  string
 }
 
+// New creates a new OpenAI provider with the given base URL, API key, and model
 func New(baseURL, apiKey, model string) *Provider {
 	opts := []option.RequestOption{}
 	if baseURL != "" {
