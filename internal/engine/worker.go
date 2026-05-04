@@ -161,7 +161,12 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		slog.Error("error storing assistant message", "worker", workerID, "task", task.ID, "error", err)
 	}
 
-	// Enrich the ChannelRef with task metadata for proper response routing.
+	wp.routeResponse(ctx, thread, task, result.Response)
+}
+
+// routeResponse enriches the ChannelRef with task metadata and sends the
+// response through the appropriate channel adapter.
+func (wp *WorkerPool) routeResponse(ctx context.Context, thread *domain.Thread, task *domain.Task, response string) {
 	responseRef := thread.ChannelRef
 	if responseRef.Properties == nil {
 		responseRef.Properties = make(map[string]string)
@@ -175,8 +180,7 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		}
 	}
 
-	// Send the response via the adapter.
-	wp.sendResponse(ctx, responseRef, result.Response)
+	wp.sendResponse(ctx, responseRef, response)
 }
 
 func (wp *WorkerPool) failTask(ctx context.Context, workerID string, task *domain.Task, err error) {

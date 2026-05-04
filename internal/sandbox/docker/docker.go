@@ -96,32 +96,19 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 		defer cancel()
 	}
 
-	pullReader, err := r.client.ImagePull(ctx, req.Image, image.PullOptions{})
+	if err := r.ensureImage(ctx, req.Image); err != nil {
+		return nil, err
+	}
+
+	containerID, cleanup, err := r.createContainer(ctx, cfg, hostCfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pull image %s: %w", req.Image, err)
+		return nil, err
 	}
-	_, _ = io.Copy(io.Discard, pullReader)
-	pullReader.Close()
+	defer cleanup()
 
-	resp, err := r.client.ContainerCreate(ctx, cfg, hostCfg, nil, nil, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create container: %w", err)
-	}
+	shortID := containerID[:12]
 
-	shortID := resp.ID[:12]
-	slog.Info("sandbox container created", "container", shortID)
-
-	defer func() {
-		_ = r.client.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{Force: true})
-		slog.Info("sandbox container removed", "container", shortID)
-	}()
-
-	if err := r.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to start container: %w", err)
-	}
-	slog.Info("sandbox container started, follow logs with: docker logs -f "+shortID, "container", shortID)
-
-	statusCh, errCh := r.client.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+	statusCh, errCh := r.client.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
 
 	var exitCode int64
 	select {
@@ -139,7 +126,7 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 		}
 	}
 
-	logReader, err := r.client.ContainerLogs(ctx, resp.ID, container.LogsOptions{
+	logReader, err := r.client.ContainerLogs(ctx, containerID, container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 	})
@@ -161,6 +148,42 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 		Output:   stdout.String(),
 		ExitCode: int(exitCode),
 	}, nil
+}
+
+// ensureImage pulls the given image so it is available locally.
+func (r *Runtime) ensureImage(ctx context.Context, img string) error {
+	pullReader, err := r.client.ImagePull(ctx, img, image.PullOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to pull image %s: %w", img, err)
+	}
+	_, _ = io.Copy(io.Discard, pullReader)
+	pullReader.Close()
+	return nil
+}
+
+// createContainer creates and starts a container, returning its ID and a
+// cleanup function that removes it.
+func (r *Runtime) createContainer(ctx context.Context, cfg *container.Config, hostCfg *container.HostConfig) (string, func(), error) {
+	resp, err := r.client.ContainerCreate(ctx, cfg, hostCfg, nil, nil, "")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create container: %w", err)
+	}
+
+	shortID := resp.ID[:12]
+	slog.Info("sandbox container created", "container", shortID)
+
+	cleanup := func() {
+		_ = r.client.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{Force: true})
+		slog.Info("sandbox container removed", "container", shortID)
+	}
+
+	if err := r.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("failed to start container: %w", err)
+	}
+	slog.Info("sandbox container started, follow logs with: docker logs -f "+shortID, "container", shortID)
+
+	return resp.ID, cleanup, nil
 }
 
 func buildEnv(envVars map[string]string) []string {
