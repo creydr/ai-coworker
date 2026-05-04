@@ -20,7 +20,12 @@ const (
 	// defaultVertexRegion is the default Google Cloud region for Vertex AI.
 	defaultVertexRegion = "global"
 	// defaultSandboxRuntime is the default sandbox runtime.
-	defaultSandboxRuntime = "docker"
+	defaultSandboxRuntime = RuntimeDocker
+
+	// RuntimeDocker is the Docker sandbox runtime.
+	RuntimeDocker = "docker"
+	// RuntimeKubernetes is the Kubernetes sandbox runtime.
+	RuntimeKubernetes = "kubernetes"
 )
 
 type Config struct {
@@ -147,11 +152,11 @@ func (c *Config) validate() error {
 		}
 	}
 	switch c.Sandbox.Runtime {
-	case "docker", "kubernetes":
+	case RuntimeDocker, RuntimeKubernetes:
 	default:
-		return fmt.Errorf("sandbox.runtime must be 'docker' or 'kubernetes', got %q", c.Sandbox.Runtime)
+		return fmt.Errorf("sandbox.runtime must be %q or %q, got %q", RuntimeDocker, RuntimeKubernetes, c.Sandbox.Runtime)
 	}
-	if c.Sandbox.Runtime == "kubernetes" && c.Sandbox.Namespace == "" {
+	if c.Sandbox.Runtime == RuntimeKubernetes && c.Sandbox.Namespace == "" {
 		return fmt.Errorf("sandbox.namespace is required when sandbox.runtime is 'kubernetes'")
 	}
 	if c.GitHub.Enabled {

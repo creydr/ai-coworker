@@ -101,7 +101,7 @@ func main() {
 	// 8. Create sandbox runtime.
 	var sandboxRuntime sandbox.Runtime
 	switch cfg.Sandbox.Runtime {
-	case "kubernetes":
+	case config.RuntimeKubernetes:
 		sandboxRuntime, err = k8ssandbox.New(cfg.Sandbox.Namespace, cfg.Sandbox.ServiceAccount)
 		if err != nil {
 			slog.Error("failed to create kubernetes sandbox runtime", "error", err)
