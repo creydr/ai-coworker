@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	// defaultMaxTokens is the maximum number of tokens the model will generate in a response.
 	defaultMaxTokens = 4096
 )
 
