@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 
 	"github.com/creydr/ai-coworker/internal/adapter"
@@ -47,23 +46,9 @@ func (r *Router) HandleEvent(ctx context.Context, event domain.IncomingEvent) er
 		}
 	}
 
-	// Normalise the ChannelRef so that GetThreadByChannelRef works for all
-	// adapters. The store looks up threads by (channel, channel_id, thread_ts).
-	// Slack populates ChannelID and ThreadTS directly. GitHub populates Repo
-	// and IssueNum instead, so we map those into ChannelID and ThreadTS.
-	ref := event.ChannelRef
-	if ref.Channel == "github" {
-		if ref.ChannelID == "" {
-			ref.ChannelID = ref.Repo
-		}
-		if ref.ThreadTS == "" && ref.IssueNum != 0 {
-			ref.ThreadTS = strconv.Itoa(ref.IssueNum)
-		}
-		event.ChannelRef = ref
-	}
-
 	// Look up or create the thread.
-	thread, err := r.store.GetThreadByChannelRef(ctx, ref.Channel, ref.ChannelID, ref.ThreadTS)
+	ref := event.ChannelRef
+	thread, err := r.store.GetThreadByChannelRef(ctx, ref.Channel, ref.ThreadKey)
 	if err != nil {
 		if !strings.Contains(err.Error(), "thread not found") {
 			return fmt.Errorf("looking up thread: %w", err)

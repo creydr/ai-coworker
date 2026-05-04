@@ -159,18 +159,14 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 	issueNum := e.GetIssue().GetNumber()
 	isPR := e.GetIssue().IsPullRequest()
 
+	ref := WithComment(NewRef(repoFullName, issueNum), e.GetComment().GetID(), "issue_comment")
+
 	incoming := domain.IncomingEvent{
-		Channel: "github",
-		ChannelRef: domain.ChannelRef{
-			Channel:     "github",
-			Repo:        repoFullName,
-			IssueNum:    issueNum,
-			CommentID:   e.GetComment().GetID(),
-			CommentType: "issue_comment",
-		},
-		ThreadID: fmt.Sprintf("github-%s-%d", repoFullName, issueNum),
-		UserID:   e.GetComment().GetUser().GetLogin(),
-		Content:  content,
+		Channel:    "github",
+		ChannelRef: ref,
+		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, issueNum),
+		UserID:     e.GetComment().GetUser().GetLogin(),
+		Content:    content,
 		Metadata: map[string]string{
 			"type":            "issue_comment",
 			"repo":            repoFullName,
@@ -199,18 +195,14 @@ func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestRe
 	repoFullName := e.GetRepo().GetFullName()
 	prNum := e.GetPullRequest().GetNumber()
 
+	ref := WithComment(NewRef(repoFullName, prNum), e.GetComment().GetID(), "review_comment")
+
 	incoming := domain.IncomingEvent{
-		Channel: "github",
-		ChannelRef: domain.ChannelRef{
-			Channel:     "github",
-			Repo:        repoFullName,
-			IssueNum:    prNum,
-			CommentID:   e.GetComment().GetID(),
-			CommentType: "review_comment",
-		},
-		ThreadID: fmt.Sprintf("github-%s-%d", repoFullName, prNum),
-		UserID:   e.GetComment().GetUser().GetLogin(),
-		Content:  content,
+		Channel:    "github",
+		ChannelRef: ref,
+		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, prNum),
+		UserID:     e.GetComment().GetUser().GetLogin(),
+		Content:    content,
 		Metadata: map[string]string{
 			"type":            "review_comment",
 			"repo":            repoFullName,
@@ -243,15 +235,11 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 	prNum := e.GetPullRequest().GetNumber()
 
 	incoming := domain.IncomingEvent{
-		Channel: "github",
-		ChannelRef: domain.ChannelRef{
-			Channel:  "github",
-			Repo:     repoFullName,
-			IssueNum: prNum,
-		},
-		ThreadID: fmt.Sprintf("github-%s-%d", repoFullName, prNum),
-		UserID:   e.GetReview().GetUser().GetLogin(),
-		Content:  content,
+		Channel:    "github",
+		ChannelRef: NewRef(repoFullName, prNum),
+		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, prNum),
+		UserID:     e.GetReview().GetUser().GetLogin(),
+		Content:    content,
 		Metadata: map[string]string{
 			"type":            "review",
 			"repo":            repoFullName,
@@ -267,18 +255,19 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 }
 
 func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, message string) error {
-	owner, repo, err := splitRepo(ref.Repo)
+	g := ParseRef(ref)
+	owner, repo, err := splitRepo(g.Repo)
 	if err != nil {
 		return err
 	}
 
-	client, err := a.getClientForRepo(ref.Repo)
+	client, err := a.getClientForRepo(g.Repo)
 	if err != nil {
 		return err
 	}
 
-	if ref.CommentType == "review_comment" && ref.CommentID != 0 {
-		_, _, err = client.PullRequests.CreateCommentInReplyTo(ctx, owner, repo, ref.IssueNum, message, ref.CommentID)
+	if g.CommentType == "review_comment" && g.CommentID != 0 {
+		_, _, err = client.PullRequests.CreateCommentInReplyTo(ctx, owner, repo, g.IssueNum, message, g.CommentID)
 		if err != nil {
 			return fmt.Errorf("failed to reply to review comment: %w", err)
 		}
@@ -288,7 +277,7 @@ func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, messa
 	comment := &gh.IssueComment{
 		Body: gh.Ptr(message),
 	}
-	_, _, err = client.Issues.CreateComment(ctx, owner, repo, ref.IssueNum, comment)
+	_, _, err = client.Issues.CreateComment(ctx, owner, repo, g.IssueNum, comment)
 	if err != nil {
 		return fmt.Errorf("failed to create issue comment: %w", err)
 	}
@@ -297,25 +286,26 @@ func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, messa
 }
 
 func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error {
-	if ref.CommentID == 0 {
+	g := ParseRef(ref)
+	if g.CommentID == 0 {
 		return nil
 	}
 
-	owner, repo, err := splitRepo(ref.Repo)
+	owner, repo, err := splitRepo(g.Repo)
 	if err != nil {
 		return err
 	}
 
-	client, err := a.getClientForRepo(ref.Repo)
+	client, err := a.getClientForRepo(g.Repo)
 	if err != nil {
 		return err
 	}
 
-	switch ref.CommentType {
+	switch g.CommentType {
 	case "review_comment":
-		_, _, err = client.Reactions.CreatePullRequestCommentReaction(ctx, owner, repo, ref.CommentID, "eyes")
+		_, _, err = client.Reactions.CreatePullRequestCommentReaction(ctx, owner, repo, g.CommentID, "eyes")
 	default:
-		_, _, err = client.Reactions.CreateIssueCommentReaction(ctx, owner, repo, ref.CommentID, "eyes")
+		_, _, err = client.Reactions.CreateIssueCommentReaction(ctx, owner, repo, g.CommentID, "eyes")
 	}
 	if err != nil {
 		return fmt.Errorf("failed to create reaction: %w", err)
