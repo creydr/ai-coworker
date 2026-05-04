@@ -39,14 +39,10 @@ func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername string) (
 }
 
 func (a *Adapter) getInstallationClient(installationID int64) *gh.Client {
-	if v, ok := a.installationClients.Load(installationID); ok {
-		return v.(*gh.Client)
-	}
-
 	itr := ghinstallation.NewFromAppsTransport(a.appsTransport, installationID)
 	client := gh.NewClient(&http.Client{Transport: itr})
-	a.installationClients.Store(installationID, client)
-	return client
+	v, _ := a.installationClients.LoadOrStore(installationID, client)
+	return v.(*gh.Client)
 }
 
 func (a *Adapter) getClientForRepo(repo string) (*gh.Client, error) {
