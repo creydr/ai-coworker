@@ -22,10 +22,11 @@ type Adapter struct {
 	repoInstallations   sync.Map // maps string repo → int64 installationID
 	webhookSecret       []byte
 	botUsername         string
+	listenAddr          string
 	server              *http.Server
 }
 
-func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername string) (*Adapter, error) {
+func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAddr string) (*Adapter, error) {
 	atr, err := ghinstallation.NewAppsTransport(http.DefaultTransport, appID, privateKeyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("creating GitHub Apps transport: %w", err)
@@ -35,6 +36,7 @@ func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername string) (
 		appsTransport: atr,
 		webhookSecret: []byte(webhookSecret),
 		botUsername:   botUsername,
+		listenAddr:    listenAddr,
 	}, nil
 }
 
@@ -65,7 +67,7 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 	})
 
 	a.server = &http.Server{
-		Addr:    ":8080",
+		Addr:    a.listenAddr,
 		Handler: mux,
 	}
 

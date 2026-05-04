@@ -11,12 +11,13 @@ import (
 )
 
 type Config struct {
-	Database DatabaseConfig `koanf:"database"`
-	LLM      LLMConfig      `koanf:"llm"`
-	Slack    SlackConfig    `koanf:"slack"`
-	GitHub   GitHubConfig   `koanf:"github"`
-	Sandbox  SandboxConfig  `koanf:"sandbox"`
-	Workers  int            `koanf:"workers"`
+	ListenAddr string         `koanf:"listen_addr"`
+	Database   DatabaseConfig `koanf:"database"`
+	LLM        LLMConfig      `koanf:"llm"`
+	Slack      SlackConfig    `koanf:"slack"`
+	GitHub     GitHubConfig   `koanf:"github"`
+	Sandbox    SandboxConfig  `koanf:"sandbox"`
+	Workers    int            `koanf:"workers"`
 }
 
 type DatabaseConfig struct {
@@ -84,6 +85,9 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Apply defaults
+	if cfg.ListenAddr == "" {
+		cfg.ListenAddr = ":8080"
+	}
 	if cfg.Workers == 0 {
 		cfg.Workers = 4
 	}

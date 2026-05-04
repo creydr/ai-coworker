@@ -1,3 +1,5 @@
+# listen_addr: ":8080"
+
 database:
   url: "postgres://ai-coworker:password@localhost:5432/ai-coworker?sslmode=disable"
 
