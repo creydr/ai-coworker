@@ -95,7 +95,7 @@ func generateTestPEMKey(t *testing.T) []byte {
 func newTestAdapter(t *testing.T, webhookSecret, botUsername string) *Adapter {
 	t.Helper()
 	pemKey := generateTestPEMKey(t)
-	a, err := New(12345, pemKey, webhookSecret, botUsername)
+	a, err := New(12345, pemKey, webhookSecret, botUsername, ":8080")
 	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
