@@ -75,15 +75,11 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 			threadID := fmt.Sprintf("slack-%s-%s", mentionEvent.Channel, threadTS)
 
 			incomingEvent := domain.IncomingEvent{
-				Channel: "slack",
-				ChannelRef: domain.ChannelRef{
-					Channel:   "slack",
-					ChannelID: mentionEvent.Channel,
-					ThreadTS:  threadTS,
-				},
-				ThreadID: threadID,
-				UserID:   mentionEvent.User,
-				Content:  text,
+				Channel:    "slack",
+				ChannelRef: NewRef(mentionEvent.Channel, threadTS),
+				ThreadID:   threadID,
+				UserID:     mentionEvent.User,
+				Content:    text,
 			}
 
 			if err := handler(ctx, incomingEvent); err != nil {
@@ -96,11 +92,12 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 }
 
 func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, message string) error {
+	s := ParseRef(ref)
 	_, _, err := a.client.PostMessageContext(
 		ctx,
-		ref.ChannelID,
+		s.ChannelID,
 		slack.MsgOptionText(message, false),
-		slack.MsgOptionTS(ref.ThreadTS),
+		slack.MsgOptionTS(s.ThreadTS),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to post slack message: %w", err)
@@ -109,9 +106,10 @@ func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, messa
 }
 
 func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error {
+	s := ParseRef(ref)
 	err := a.client.AddReactionContext(ctx, "eyes", slack.ItemRef{
-		Channel:   ref.ChannelID,
-		Timestamp: ref.ThreadTS,
+		Channel:   s.ChannelID,
+		Timestamp: s.ThreadTS,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add slack reaction: %w", err)

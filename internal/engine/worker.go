@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
 	"time"
 
 	"github.com/creydr/ai-coworker/internal/domain"
@@ -127,7 +126,7 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		Event:    &event,
 	}
 
-	log.Printf("[%s] executing task %s (intent=%s, repo=%s)", workerID, task.ID, intent, thread.ChannelRef.Repo)
+	log.Printf("[%s] executing task %s (intent=%s, thread=%s)", workerID, task.ID, intent, thread.ChannelRef.ThreadKey)
 	result, err := exec.Execute(ctx, execCtx)
 	if err != nil {
 		wp.failTask(ctx, workerID, task, fmt.Errorf("executing task: %w", err))
@@ -155,14 +154,15 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 
 	// Enrich the ChannelRef with task metadata for proper response routing.
 	responseRef := thread.ChannelRef
+	if responseRef.Properties == nil {
+		responseRef.Properties = make(map[string]string)
+	}
 	if task.Metadata != nil {
 		if ct, ok := task.Metadata["type"]; ok {
-			responseRef.CommentType = ct
+			responseRef.Properties["comment_type"] = ct
 		}
 		if cid, ok := task.Metadata["comment_id"]; ok {
-			if id, err := strconv.ParseInt(cid, 10, 64); err == nil {
-				responseRef.CommentID = id
-			}
+			responseRef.Properties["comment_id"] = cid
 		}
 	}
 

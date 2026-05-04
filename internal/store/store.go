@@ -11,8 +11,8 @@ type Store interface {
 	// GetThread retrieves a thread by its ID.
 	GetThread(ctx context.Context, id string) (*domain.Thread, error)
 
-	// GetThreadByChannelRef finds a thread by its channel reference fields.
-	GetThreadByChannelRef(ctx context.Context, channel, channelID, threadTS string) (*domain.Thread, error)
+	// GetThreadByChannelRef finds a thread by its channel and thread key.
+	GetThreadByChannelRef(ctx context.Context, channel, threadKey string) (*domain.Thread, error)
 
 	// CreateThread persists a new thread and populates its ID.
 	CreateThread(ctx context.Context, t *domain.Thread) error

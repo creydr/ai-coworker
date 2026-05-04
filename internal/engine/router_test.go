@@ -16,7 +16,7 @@ type mockStore struct {
 	tasks    []*domain.Task
 
 	getThreadFunc          func(ctx context.Context, id string) (*domain.Thread, error)
-	getThreadByChannelFunc func(ctx context.Context, channel, channelID, threadTS string) (*domain.Thread, error)
+	getThreadByChannelFunc func(ctx context.Context, channel, threadKey string) (*domain.Thread, error)
 	createThreadFunc       func(ctx context.Context, t *domain.Thread) error
 	createMessageFunc      func(ctx context.Context, m *domain.Message) error
 	createTaskFunc         func(ctx context.Context, t *domain.Task) error
@@ -43,9 +43,9 @@ func (m *mockStore) GetThread(ctx context.Context, id string) (*domain.Thread, e
 	return nil, fmt.Errorf("thread not found: %s", id)
 }
 
-func (m *mockStore) GetThreadByChannelRef(ctx context.Context, channel, channelID, threadTS string) (*domain.Thread, error) {
+func (m *mockStore) GetThreadByChannelRef(ctx context.Context, channel, threadKey string) (*domain.Thread, error) {
 	if m.getThreadByChannelFunc != nil {
-		return m.getThreadByChannelFunc(ctx, channel, channelID, threadTS)
+		return m.getThreadByChannelFunc(ctx, channel, threadKey)
 	}
 	return nil, fmt.Errorf("thread not found")
 }
@@ -138,9 +138,12 @@ func TestRouter_HandleEvent_PassesMetadata(t *testing.T) {
 	event := domain.IncomingEvent{
 		Channel: "github",
 		ChannelRef: domain.ChannelRef{
-			Channel:  "github",
-			Repo:     "org/repo",
-			IssueNum: 42,
+			Channel:   "github",
+			ThreadKey: "org/repo#42",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "42",
+			},
 		},
 		Content: "fix this bug",
 		Metadata: map[string]string{
@@ -187,8 +190,11 @@ func TestRouter_HandleEvent_NilMetadata(t *testing.T) {
 		Channel: "slack",
 		ChannelRef: domain.ChannelRef{
 			Channel:   "slack",
-			ChannelID: "C123",
-			ThreadTS:  "1234.5678",
+			ThreadKey: "C123/1234.5678",
+			Properties: map[string]string{
+				"channel_id": "C123",
+				"thread_ts":  "1234.5678",
+			},
 		},
 		Content:  "hello",
 		Metadata: nil,
@@ -216,9 +222,12 @@ func TestRouter_HandleEvent_Acknowledge(t *testing.T) {
 	event := domain.IncomingEvent{
 		Channel: "github",
 		ChannelRef: domain.ChannelRef{
-			Channel:  "github",
-			Repo:     "org/repo",
-			IssueNum: 1,
+			Channel:   "github",
+			ThreadKey: "org/repo#1",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "1",
+			},
 		},
 		Content: "do it",
 	}
@@ -232,47 +241,23 @@ func TestRouter_HandleEvent_Acknowledge(t *testing.T) {
 	}
 }
 
-func TestRouter_HandleEvent_GitHubChannelRefNormalization(t *testing.T) {
-	ms := newMockStore()
-	r := NewRouter(ms)
-
-	event := domain.IncomingEvent{
-		Channel: "github",
-		ChannelRef: domain.ChannelRef{
-			Channel:  "github",
-			Repo:     "org/repo",
-			IssueNum: 42,
-		},
-		Content: "fix it",
-	}
-
-	if err := r.HandleEvent(context.Background(), event); err != nil {
-		t.Fatalf("HandleEvent: %v", err)
-	}
-
-	thread := ms.threads[ms.tasks[0].ThreadID]
-	if thread.ChannelRef.ChannelID != "org/repo" {
-		t.Errorf("ChannelID = %q, want %q", thread.ChannelRef.ChannelID, "org/repo")
-	}
-	if thread.ChannelRef.ThreadTS != "42" {
-		t.Errorf("ThreadTS = %q, want %q", thread.ChannelRef.ThreadTS, "42")
-	}
-}
-
 func TestRouter_HandleEvent_ExistingThread(t *testing.T) {
 	ms := newMockStore()
 	existingThread := &domain.Thread{
 		ID: "existing-thread",
 		ChannelRef: domain.ChannelRef{
 			Channel:   "slack",
-			ChannelID: "C123",
-			ThreadTS:  "1234.5678",
+			ThreadKey: "C123/1234.5678",
+			Properties: map[string]string{
+				"channel_id": "C123",
+				"thread_ts":  "1234.5678",
+			},
 		},
 		Status: domain.ThreadActive,
 	}
 	ms.threads["existing-thread"] = existingThread
-	ms.getThreadByChannelFunc = func(_ context.Context, channel, channelID, threadTS string) (*domain.Thread, error) {
-		if channel == "slack" && channelID == "C123" && threadTS == "1234.5678" {
+	ms.getThreadByChannelFunc = func(_ context.Context, channel, threadKey string) (*domain.Thread, error) {
+		if channel == "slack" && threadKey == "C123/1234.5678" {
 			return existingThread, nil
 		}
 		return nil, fmt.Errorf("thread not found")
@@ -284,8 +269,11 @@ func TestRouter_HandleEvent_ExistingThread(t *testing.T) {
 		Channel: "slack",
 		ChannelRef: domain.ChannelRef{
 			Channel:   "slack",
-			ChannelID: "C123",
-			ThreadTS:  "1234.5678",
+			ThreadKey: "C123/1234.5678",
+			Properties: map[string]string{
+				"channel_id": "C123",
+				"thread_ts":  "1234.5678",
+			},
 		},
 		Content: "follow-up message",
 	}

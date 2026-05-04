@@ -52,9 +52,12 @@ func TestWorker_ProcessTask_UsesTaskMetadata(t *testing.T) {
 	thread := &domain.Thread{
 		ID: "thread-1",
 		ChannelRef: domain.ChannelRef{
-			Channel:  "github",
-			Repo:     "org/repo",
-			IssueNum: 5,
+			Channel:   "github",
+			ThreadKey: "org/repo#5",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "5",
+			},
 		},
 		Status: domain.ThreadActive,
 	}
@@ -111,9 +114,12 @@ func TestWorker_ResponseRouting_ReviewComment(t *testing.T) {
 	thread := &domain.Thread{
 		ID: "thread-1",
 		ChannelRef: domain.ChannelRef{
-			Channel:  "github",
-			Repo:     "org/repo",
-			IssueNum: 5,
+			Channel:   "github",
+			ThreadKey: "org/repo#5",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "5",
+			},
 		},
 		Status: domain.ThreadActive,
 	}
@@ -140,11 +146,11 @@ func TestWorker_ResponseRouting_ReviewComment(t *testing.T) {
 	}
 
 	ref := adapter.responseCalls[0].Ref
-	if ref.CommentType != "review_comment" {
-		t.Errorf("CommentType = %q, want %q", ref.CommentType, "review_comment")
+	if ref.Properties["comment_type"] != "review_comment" {
+		t.Errorf("Properties[comment_type] = %q, want %q", ref.Properties["comment_type"], "review_comment")
 	}
-	if ref.CommentID != 88888 {
-		t.Errorf("CommentID = %d, want 88888", ref.CommentID)
+	if ref.Properties["comment_id"] != "88888" {
+		t.Errorf("Properties[comment_id] = %q, want %q", ref.Properties["comment_id"], "88888")
 	}
 }
 
@@ -154,9 +160,12 @@ func TestWorker_ResponseRouting_IssueComment(t *testing.T) {
 	thread := &domain.Thread{
 		ID: "thread-1",
 		ChannelRef: domain.ChannelRef{
-			Channel:  "github",
-			Repo:     "org/repo",
-			IssueNum: 10,
+			Channel:   "github",
+			ThreadKey: "org/repo#10",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "10",
+			},
 		},
 		Status: domain.ThreadActive,
 	}
@@ -181,11 +190,8 @@ func TestWorker_ResponseRouting_IssueComment(t *testing.T) {
 	}
 
 	ref := adapter.responseCalls[0].Ref
-	if ref.CommentType != "issue_comment" {
-		t.Errorf("CommentType = %q, want %q", ref.CommentType, "issue_comment")
-	}
-	if ref.CommentID != 0 {
-		t.Errorf("CommentID = %d, want 0 (no reply-to for issue comments)", ref.CommentID)
+	if ref.Properties["comment_type"] != "issue_comment" {
+		t.Errorf("Properties[comment_type] = %q, want %q", ref.Properties["comment_type"], "issue_comment")
 	}
 }
 
@@ -195,9 +201,12 @@ func TestWorker_ResponseRouting_NilMetadata(t *testing.T) {
 	thread := &domain.Thread{
 		ID: "thread-1",
 		ChannelRef: domain.ChannelRef{
-			Channel:  "github",
-			Repo:     "org/repo",
-			IssueNum: 1,
+			Channel:   "github",
+			ThreadKey: "org/repo#1",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "1",
+			},
 		},
 		Status: domain.ThreadActive,
 	}
@@ -218,11 +227,11 @@ func TestWorker_ResponseRouting_NilMetadata(t *testing.T) {
 	}
 
 	ref := adapter.responseCalls[0].Ref
-	if ref.CommentType != "" {
-		t.Errorf("CommentType = %q, want empty", ref.CommentType)
+	if ref.Properties["comment_type"] != "" {
+		t.Errorf("Properties[comment_type] = %q, want empty", ref.Properties["comment_type"])
 	}
-	if ref.CommentID != 0 {
-		t.Errorf("CommentID = %d, want 0", ref.CommentID)
+	if ref.Properties["comment_id"] != "" {
+		t.Errorf("Properties[comment_id] = %q, want empty", ref.Properties["comment_id"])
 	}
 }
 
@@ -230,9 +239,16 @@ func TestWorker_IntentRouting_CodeTask(t *testing.T) {
 	ms, _, codeExec, llmExec, wp := newWorkerTestSetup()
 
 	thread := &domain.Thread{
-		ID:         "thread-1",
-		ChannelRef: domain.ChannelRef{Channel: "github", Repo: "org/repo", IssueNum: 1},
-		Status:     domain.ThreadActive,
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#1",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "1",
+			},
+		},
+		Status: domain.ThreadActive,
 	}
 	ms.threads["thread-1"] = thread
 
@@ -270,9 +286,16 @@ func TestWorker_IntentRouting_Question(t *testing.T) {
 	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
 
 	thread := &domain.Thread{
-		ID:         "thread-1",
-		ChannelRef: domain.ChannelRef{Channel: "github", Repo: "org/repo", IssueNum: 1},
-		Status:     domain.ThreadActive,
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#1",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "1",
+			},
+		},
+		Status: domain.ThreadActive,
 	}
 	ms.threads["thread-1"] = thread
 
@@ -310,9 +333,16 @@ func TestWorker_IntentRouting_ReviewShortCircuit(t *testing.T) {
 	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
 
 	thread := &domain.Thread{
-		ID:         "thread-1",
-		ChannelRef: domain.ChannelRef{Channel: "github", Repo: "org/repo", IssueNum: 3},
-		Status:     domain.ThreadActive,
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#3",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "3",
+			},
+		},
+		Status: domain.ThreadActive,
 	}
 	ms.threads["thread-1"] = thread
 
@@ -341,9 +371,16 @@ func TestWorker_TaskStatusUpdated(t *testing.T) {
 	ms, _, _, _, wp := newWorkerTestSetup()
 
 	thread := &domain.Thread{
-		ID:         "thread-1",
-		ChannelRef: domain.ChannelRef{Channel: "github", Repo: "org/repo", IssueNum: 1},
-		Status:     domain.ThreadActive,
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#1",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "1",
+			},
+		},
+		Status: domain.ThreadActive,
 	}
 	ms.threads["thread-1"] = thread
 

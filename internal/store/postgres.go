@@ -20,6 +20,9 @@ var migrationSQL string
 //go:embed migrations/002_task_metadata.sql
 var migration002SQL string
 
+//go:embed migrations/003_channel_ref_refactor.sql
+var migration003SQL string
+
 // scannable is satisfied by both pgx.Row and pgx.Rows.
 type scannable interface {
 	Scan(dest ...any) error
@@ -50,7 +53,7 @@ func NewPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, 
 
 // Migrate runs all embedded SQL migrations.
 func (s *PostgresStore) Migrate(ctx context.Context) error {
-	for i, sql := range []string{migrationSQL, migration002SQL} {
+	for i, sql := range []string{migrationSQL, migration002SQL, migration003SQL} {
 		if _, err := s.pool.Exec(ctx, sql); err != nil {
 			return fmt.Errorf("running migration %03d: %w", i+1, err)
 		}
@@ -68,13 +71,12 @@ func (s *PostgresStore) Close() error {
 
 func scanThread(row scannable) (*domain.Thread, error) {
 	var t domain.Thread
+	var propertiesJSON []byte
 	err := row.Scan(
 		&t.ID,
 		&t.ChannelRef.Channel,
-		&t.ChannelRef.ChannelID,
-		&t.ChannelRef.ThreadTS,
-		&t.ChannelRef.Repo,
-		&t.ChannelRef.IssueNum,
+		&t.ChannelRef.ThreadKey,
+		&propertiesJSON,
 		&t.Status,
 		&t.CreatedAt,
 		&t.UpdatedAt,
@@ -82,10 +84,14 @@ func scanThread(row scannable) (*domain.Thread, error) {
 	if err != nil {
 		return nil, err
 	}
+	t.ChannelRef.Properties, err = decodeMetadata(propertiesJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decoding thread properties: %w", err)
+	}
 	return &t, nil
 }
 
-const threadColumns = `id, channel, channel_id, thread_ts, repo, issue_num, status, created_at, updated_at`
+const threadColumns = `id, channel, thread_key, properties, status, created_at, updated_at`
 
 func (s *PostgresStore) GetThread(ctx context.Context, id string) (*domain.Thread, error) {
 	row := s.pool.QueryRow(ctx,
@@ -97,13 +103,13 @@ func (s *PostgresStore) GetThread(ctx context.Context, id string) (*domain.Threa
 	return t, err
 }
 
-func (s *PostgresStore) GetThreadByChannelRef(ctx context.Context, channel, channelID, threadTS string) (*domain.Thread, error) {
+func (s *PostgresStore) GetThreadByChannelRef(ctx context.Context, channel, threadKey string) (*domain.Thread, error) {
 	row := s.pool.QueryRow(ctx,
-		`SELECT `+threadColumns+` FROM threads WHERE channel = $1 AND channel_id = $2 AND thread_ts = $3`,
-		channel, channelID, threadTS)
+		`SELECT `+threadColumns+` FROM threads WHERE channel = $1 AND thread_key = $2`,
+		channel, threadKey)
 	t, err := scanThread(row)
 	if err == pgx.ErrNoRows {
-		return nil, fmt.Errorf("thread not found for channel ref: %s/%s/%s", channel, channelID, threadTS)
+		return nil, fmt.Errorf("thread not found for channel ref: %s/%s", channel, threadKey)
 	}
 	return t, err
 }
@@ -114,15 +120,18 @@ func (s *PostgresStore) CreateThread(ctx context.Context, t *domain.Thread) erro
 	t.CreatedAt = now
 	t.UpdatedAt = now
 
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO threads (id, channel, channel_id, thread_ts, repo, issue_num, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+	propertiesJSON, err := encodeMetadata(t.ChannelRef.Properties)
+	if err != nil {
+		return fmt.Errorf("encoding thread properties: %w", err)
+	}
+
+	_, err = s.pool.Exec(ctx,
+		`INSERT INTO threads (id, channel, thread_key, properties, status, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		t.ID,
 		t.ChannelRef.Channel,
-		t.ChannelRef.ChannelID,
-		t.ChannelRef.ThreadTS,
-		t.ChannelRef.Repo,
-		t.ChannelRef.IssueNum,
+		t.ChannelRef.ThreadKey,
+		propertiesJSON,
 		t.Status,
 		t.CreatedAt,
 		t.UpdatedAt,

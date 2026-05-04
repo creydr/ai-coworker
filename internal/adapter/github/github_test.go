@@ -216,14 +216,18 @@ func TestHandleIssueComment(t *testing.T) {
 	if captured.Content != "fix this" {
 		t.Errorf("Content = %q, want %q", captured.Content, "fix this")
 	}
-	if captured.ChannelRef.Repo != repoFullName {
-		t.Errorf("ChannelRef.Repo = %q, want %q", captured.ChannelRef.Repo, repoFullName)
+	if captured.ChannelRef.Properties["repo"] != repoFullName {
+		t.Errorf("ChannelRef.Properties[repo] = %q, want %q", captured.ChannelRef.Properties["repo"], repoFullName)
 	}
-	if captured.ChannelRef.IssueNum != issueNum {
-		t.Errorf("ChannelRef.IssueNum = %d, want %d", captured.ChannelRef.IssueNum, issueNum)
+	if captured.ChannelRef.Properties["issue_num"] != fmt.Sprint(issueNum) {
+		t.Errorf("ChannelRef.Properties[issue_num] = %q, want %q", captured.ChannelRef.Properties["issue_num"], fmt.Sprint(issueNum))
 	}
-	if captured.ChannelRef.CommentID != commentID {
-		t.Errorf("ChannelRef.CommentID = %d, want %d", captured.ChannelRef.CommentID, commentID)
+	if captured.ChannelRef.Properties["comment_id"] != fmt.Sprint(commentID) {
+		t.Errorf("ChannelRef.Properties[comment_id] = %q, want %q", captured.ChannelRef.Properties["comment_id"], fmt.Sprint(commentID))
+	}
+	expectedThreadKey := fmt.Sprintf("%s#%d", repoFullName, issueNum)
+	if captured.ChannelRef.ThreadKey != expectedThreadKey {
+		t.Errorf("ChannelRef.ThreadKey = %q, want %q", captured.ChannelRef.ThreadKey, expectedThreadKey)
 	}
 
 	// Metadata checks.
@@ -320,8 +324,8 @@ func TestHandleIssueComment_CommentType(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	if captured.ChannelRef.CommentType != "issue_comment" {
-		t.Errorf("CommentType = %q, want %q", captured.ChannelRef.CommentType, "issue_comment")
+	if captured.ChannelRef.Properties["comment_type"] != "issue_comment" {
+		t.Errorf("Properties[comment_type] = %q, want %q", captured.ChannelRef.Properties["comment_type"], "issue_comment")
 	}
 }
 
@@ -446,11 +450,11 @@ func TestHandlePRReviewComment_WithMention(t *testing.T) {
 	if captured.Content != "add error handling here" {
 		t.Errorf("Content = %q, want %q", captured.Content, "add error handling here")
 	}
-	if captured.ChannelRef.CommentType != "review_comment" {
-		t.Errorf("CommentType = %q, want %q", captured.ChannelRef.CommentType, "review_comment")
+	if captured.ChannelRef.Properties["comment_type"] != "review_comment" {
+		t.Errorf("Properties[comment_type] = %q, want %q", captured.ChannelRef.Properties["comment_type"], "review_comment")
 	}
-	if captured.ChannelRef.CommentID != 88888 {
-		t.Errorf("CommentID = %d, want 88888", captured.ChannelRef.CommentID)
+	if captured.ChannelRef.Properties["comment_id"] != "88888" {
+		t.Errorf("Properties[comment_id] = %q, want %q", captured.ChannelRef.Properties["comment_id"], "88888")
 	}
 	if captured.Metadata["pr_branch"] != "feat/branch" {
 		t.Errorf("Metadata[pr_branch] = %q, want %q", captured.Metadata["pr_branch"], "feat/branch")

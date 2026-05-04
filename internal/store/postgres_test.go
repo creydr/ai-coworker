@@ -34,16 +34,16 @@ func TestIntegrationThreadLifecycle(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
-	channelID := "chan-" + t.Name()
-	threadTS := "ts-" + t.Name()
+	threadKey := "C123/" + t.Name()
 
 	thread := &domain.Thread{
 		ChannelRef: domain.ChannelRef{
 			Channel:   "slack",
-			ChannelID: channelID,
-			ThreadTS:  threadTS,
-			Repo:      "org/repo",
-			IssueNum:  42,
+			ThreadKey: threadKey,
+			Properties: map[string]string{
+				"channel_id": "C123",
+				"thread_ts":  t.Name(),
+			},
 		},
 		Status: domain.ThreadActive,
 	}
@@ -76,21 +76,18 @@ func TestIntegrationThreadLifecycle(t *testing.T) {
 	if got.ChannelRef.Channel != "slack" {
 		t.Errorf("Channel mismatch: got %q, want %q", got.ChannelRef.Channel, "slack")
 	}
-	if got.ChannelRef.ChannelID != channelID {
-		t.Errorf("ChannelID mismatch: got %q, want %q", got.ChannelRef.ChannelID, channelID)
+	if got.ChannelRef.ThreadKey != threadKey {
+		t.Errorf("ThreadKey mismatch: got %q, want %q", got.ChannelRef.ThreadKey, threadKey)
 	}
-	if got.ChannelRef.ThreadTS != threadTS {
-		t.Errorf("ThreadTS mismatch: got %q, want %q", got.ChannelRef.ThreadTS, threadTS)
+	if got.ChannelRef.Properties["channel_id"] != "C123" {
+		t.Errorf("Properties[channel_id] mismatch: got %q, want %q", got.ChannelRef.Properties["channel_id"], "C123")
 	}
-	if got.ChannelRef.Repo != "org/repo" {
-		t.Errorf("Repo mismatch: got %q, want %q", got.ChannelRef.Repo, "org/repo")
-	}
-	if got.ChannelRef.IssueNum != 42 {
-		t.Errorf("IssueNum mismatch: got %d, want %d", got.ChannelRef.IssueNum, 42)
+	if got.ChannelRef.Properties["thread_ts"] != t.Name() {
+		t.Errorf("Properties[thread_ts] mismatch: got %q, want %q", got.ChannelRef.Properties["thread_ts"], t.Name())
 	}
 
 	// Get by channel ref
-	gotByRef, err := s.GetThreadByChannelRef(ctx, "slack", channelID, threadTS)
+	gotByRef, err := s.GetThreadByChannelRef(ctx, "slack", threadKey)
 	if err != nil {
 		t.Fatalf("GetThreadByChannelRef: %v", err)
 	}
@@ -118,12 +115,14 @@ func TestIntegrationMessageLifecycle(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
-	// Create a thread to hold messages.
 	thread := &domain.Thread{
 		ChannelRef: domain.ChannelRef{
 			Channel:   "slack",
-			ChannelID: "msg-chan-" + t.Name(),
-			ThreadTS:  "msg-ts-" + t.Name(),
+			ThreadKey: "msg-chan/" + t.Name(),
+			Properties: map[string]string{
+				"channel_id": "msg-chan",
+				"thread_ts":  t.Name(),
+			},
 		},
 		Status: domain.ThreadActive,
 	}
@@ -131,7 +130,6 @@ func TestIntegrationMessageLifecycle(t *testing.T) {
 		t.Fatalf("CreateThread: %v", err)
 	}
 
-	// Insert two messages with a small delay so their created_at differs.
 	msg1 := &domain.Message{
 		ThreadID: thread.ID,
 		Role:     domain.RoleUser,
@@ -155,7 +153,6 @@ func TestIntegrationMessageLifecycle(t *testing.T) {
 		t.Fatalf("CreateMessage (msg2): %v", err)
 	}
 
-	// Retrieve messages and verify order and content.
 	msgs, err := s.GetMessages(ctx, thread.ID)
 	if err != nil {
 		t.Fatalf("GetMessages: %v", err)
@@ -184,7 +181,6 @@ func TestIntegrationMessageLifecycle(t *testing.T) {
 		t.Errorf("second message content: got %q, want %q", msgs[1].Content, "Hello from assistant")
 	}
 
-	// Verify chronological ordering.
 	if !msgs[1].CreatedAt.After(msgs[0].CreatedAt) {
 		t.Errorf("expected msg2.CreatedAt (%v) to be after msg1.CreatedAt (%v)",
 			msgs[1].CreatedAt, msgs[0].CreatedAt)
@@ -195,12 +191,14 @@ func TestIntegrationTaskClaimAndUpdate(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
-	// Create a thread for the task.
 	thread := &domain.Thread{
 		ChannelRef: domain.ChannelRef{
 			Channel:   "github",
-			ChannelID: "task-chan-" + t.Name(),
-			ThreadTS:  "task-ts-" + t.Name(),
+			ThreadKey: "org/repo#" + t.Name(),
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "1",
+			},
 		},
 		Status: domain.ThreadActive,
 	}
@@ -208,7 +206,6 @@ func TestIntegrationTaskClaimAndUpdate(t *testing.T) {
 		t.Fatalf("CreateThread: %v", err)
 	}
 
-	// Create a pending task.
 	task := &domain.Task{
 		ThreadID: thread.ID,
 		Intent:   domain.IntentCodeTask,
@@ -225,7 +222,6 @@ func TestIntegrationTaskClaimAndUpdate(t *testing.T) {
 		t.Errorf("initial status: got %q, want %q", task.Status, domain.TaskPending)
 	}
 
-	// Claim the task.
 	workerID := "worker-" + t.Name()
 	claimed, err := s.ClaimNextTask(ctx, workerID)
 	if err != nil {
@@ -250,7 +246,6 @@ func TestIntegrationTaskClaimAndUpdate(t *testing.T) {
 		t.Errorf("claimed input: got %q, want %q", claimed.Input, "implement feature X")
 	}
 
-	// No more pending tasks should be available.
 	none, err := s.ClaimNextTask(ctx, "another-worker")
 	if err != nil {
 		t.Fatalf("ClaimNextTask (second call): %v", err)
@@ -259,14 +254,12 @@ func TestIntegrationTaskClaimAndUpdate(t *testing.T) {
 		t.Errorf("expected nil from second ClaimNextTask, got task %q", none.ID)
 	}
 
-	// Update the task to completed.
 	claimed.Status = domain.TaskCompleted
 	claimed.Result = "feature X implemented successfully"
 	if err := s.UpdateTask(ctx, claimed); err != nil {
 		t.Fatalf("UpdateTask: %v", err)
 	}
 
-	// Verify the update persisted: claim should still return nil (no pending tasks).
 	afterUpdate, err := s.ClaimNextTask(ctx, "yet-another-worker")
 	if err != nil {
 		t.Fatalf("ClaimNextTask after update: %v", err)
