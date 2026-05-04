@@ -7,6 +7,7 @@ import (
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/vertex"
+	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/creydr/ai-coworker/internal/llm"
 )
 
@@ -56,9 +57,9 @@ func convertMessages(messages []llm.Message) []anthropic.MessageParam {
 	params := make([]anthropic.MessageParam, 0, len(messages))
 	for _, msg := range messages {
 		switch msg.Role {
-		case llm.RoleUser:
+		case domain.RoleUser:
 			params = append(params, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
-		case llm.RoleAssistant:
+		case domain.RoleAssistant:
 			params = append(params, anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
 		}
 	}

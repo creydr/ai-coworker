@@ -51,7 +51,7 @@ func (c *IntentClassifier) Classify(ctx context.Context, event domain.IncomingEv
 	sb.WriteString("Respond with exactly one word: code_task, review, question, or discussion.")
 
 	messages := []llm.Message{
-		{Role: llm.RoleUser, Content: sb.String()},
+		{Role: domain.RoleUser, Content: sb.String()},
 	}
 
 	response, err := c.provider.Chat(ctx, messages)
