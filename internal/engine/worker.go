@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/creydr/ai-coworker/internal/domain"
@@ -19,6 +20,7 @@ type WorkerPool struct {
 	codeExec   executor.Executor
 	llmExec    executor.Executor
 	numWorkers int
+	wg         sync.WaitGroup
 }
 
 // NewWorkerPool creates a new WorkerPool with the given dependencies.
@@ -41,12 +43,20 @@ func NewWorkerPool(
 }
 
 // Start launches numWorkers goroutines that continuously claim and process tasks.
-// It blocks until ctx is cancelled.
 func (wp *WorkerPool) Start(ctx context.Context) {
 	for i := 0; i < wp.numWorkers; i++ {
 		workerID := fmt.Sprintf("worker-%d", i)
-		go wp.runWorker(ctx, workerID)
+		wp.wg.Add(1)
+		go func() {
+			defer wp.wg.Done()
+			wp.runWorker(ctx, workerID)
+		}()
 	}
+}
+
+// Wait blocks until all worker goroutines have exited.
+func (wp *WorkerPool) Wait() {
+	wp.wg.Wait()
 }
 
 func (wp *WorkerPool) runWorker(ctx context.Context, workerID string) {
