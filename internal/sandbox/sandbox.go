@@ -8,6 +8,7 @@ type ExecRequest struct {
 	Branch   string
 	Prompt   string
 	EnvVars  map[string]string
+	Binds    []string
 	Timeout  int
 	CPULimit string
 	MemLimit string
