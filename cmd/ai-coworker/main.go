@@ -21,6 +21,8 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+
 	// 1. Load config from config.yaml or first CLI argument.
 	cfgPath := "config.yaml"
 	if len(os.Args) > 1 {

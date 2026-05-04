@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/creydr/ai-coworker/internal/adapter"
 	"github.com/creydr/ai-coworker/internal/domain"
@@ -42,7 +42,7 @@ func (r *Router) HandleEvent(ctx context.Context, event domain.IncomingEvent) er
 	// Acknowledge the event if an adapter is available.
 	if a := r.adapters[event.Channel]; a != nil {
 		if err := a.Acknowledge(ctx, event.ChannelRef); err != nil {
-			log.Printf("failed to acknowledge event on %s: %v", event.Channel, err)
+			slog.Warn("failed to acknowledge event", "channel", event.Channel, "error", err)
 		}
 	}
 
