@@ -40,7 +40,7 @@ GitHub Adapter ─┤   Task Queue         ├── LLM Agent (non-code tasks)
 
 ### Thread-Based Conversation Model
 
-There is no distinction between "new task" and "follow-up." Every incoming event is matched to a thread by channel-specific identifiers (Slack thread timestamp, GitHub issue number). If the thread exists, the event is a continuation with full history. If not, a new thread is created.
+There is no distinction between "new task" and "follow-up." Every incoming event is matched to a thread by a `(channel, thread_key)` pair. Each adapter constructs a unique `ThreadKey` from its own identifiers (e.g. `"org/repo#42"` for GitHub, `"C123/1234.5678"` for Slack). Adapter-specific routing data is stored in an opaque `Properties` map, keeping the domain layer adapter-agnostic. If the thread exists, the event is a continuation with full history. If not, a new thread is created.
 
 A thread stays active until explicitly resolved or it times out after a configurable idle period.
 
@@ -99,28 +99,29 @@ The container is disposable — isolation ensures a rogue output cannot affect t
 
 ### LLM Provider Abstraction
 
-A simple interface that wraps LLM API calls. Claude implementation ships first; other providers (Gemini, etc.) can be added by implementing the same interface.
+A simple interface that wraps LLM API calls. Three providers ship today — Claude (direct API), Vertex AI (Claude on Google Cloud), and OpenAI-compatible (for any service exposing the OpenAI chat completions endpoint). Additional providers can be added by implementing the same interface.
 
 ```go
-type LLMProvider interface {
-    Chat(ctx context.Context, messages []Message, opts ...Option) (string, error)
+type Provider interface {
+    Chat(ctx context.Context, messages []Message) (string, error)
 }
 ```
 
 ### Sandbox Runtime
 
-An interface for container lifecycle management. Two implementations:
+An interface for container lifecycle management. Currently one implementation:
 
 - **Docker:** For local development and single-server deployment.
-- **Kubernetes:** Creates Jobs/Pods for execution on K8s clusters.
+
+Additional runtimes (e.g. Kubernetes) can be added by implementing the `Runtime` interface.
 
 ### State Store (PostgreSQL)
 
 Three core tables:
 
-- **threads** — maps channel thread identifiers to a conversation ID.
+- **threads** — maps `(channel, thread_key)` pairs to a conversation ID. Adapter-specific routing data is stored in a JSONB `properties` column.
 - **messages** — ordered messages within a thread (user and AI), with timestamps.
-- **tasks** — work queue with status (`pending`, `in_progress`, `completed`, `failed`), worker assignment, timestamps, and results.
+- **tasks** — work queue with status (`pending`, `in_progress`, `completed`, `failed`), worker assignment, task metadata (JSONB), timestamps, and results.
 
 ## Project Structure
 
@@ -130,29 +131,32 @@ ai-coworker/
 │   └── ai-coworker/          # main entrypoint
 ├── internal/
 │   ├── adapter/               # channel adapters
-│   │   ├── adapter.go         # ChannelAdapter interface
-│   │   ├── github/            # GitHub App webhooks + API
-│   │   └── slack/             # Slack Socket Mode + API
+│   │   ├── adapter.go         # Adapter interface
+│   │   ├── github/            # GitHub App webhooks + API (ref.go for typed helpers)
+│   │   └── slack/             # Slack Socket Mode + API (ref.go for typed helpers)
+│   ├── config/                # configuration loading (koanf)
+│   ├── domain/                # core types (Event, Thread, Task, Message)
 │   ├── engine/                # core orchestration
-│   │   ├── router.go          # event → thread matching → worker dispatch
-│   │   ├── worker.go          # pulls tasks, reasons about intent, delegates
-│   │   └── thread.go          # thread lifecycle management
+│   │   ├── router.go          # event → thread matching → task dispatch
+│   │   ├── worker.go          # pulls tasks, classifies intent, delegates
+│   │   └── intent.go          # LLM-based intent classification
 │   ├── executor/              # task execution
 │   │   ├── executor.go        # Executor interface
 │   │   ├── claudecode/        # spawns container, runs Claude Code CLI
-│   │   └── llm/               # direct LLM calls for non-code tasks
+│   │   └── llmexec/           # direct LLM calls for non-code tasks
 │   ├── llm/                   # LLM provider abstraction
-│   │   ├── provider.go        # LLMProvider interface
-│   │   └── claude/            # Claude/Anthropic implementation
+│   │   ├── provider.go        # Provider interface
+│   │   ├── claude/            # Anthropic Claude implementation
+│   │   ├── vertex/            # Vertex AI (Claude on Google Cloud)
+│   │   └── openai/            # OpenAI-compatible API
 │   ├── sandbox/               # container management
-│   │   ├── sandbox.go         # Sandbox interface
-│   │   ├── docker/            # Docker implementation
-│   │   └── kubernetes/        # K8s Job/Pod implementation
+│   │   ├── sandbox.go         # Runtime interface
+│   │   └── docker/            # Docker implementation
 │   └── store/                 # PostgreSQL persistence
 │       ├── store.go           # data access interface
-│       ├── threads.go
-│       ├── messages.go
-│       └── tasks.go
+│       ├── postgres.go        # PostgreSQL implementation
+│       └── migrations/        # SQL migration files
+├── sandbox/                   # Dockerfile and entrypoint for sandbox image
 ├── config.yaml                # runtime configuration
 ├── Dockerfile
 ├── go.mod
