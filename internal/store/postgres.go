@@ -14,14 +14,28 @@ import (
 	"github.com/creydr/ai-coworker/internal/domain"
 )
 
+// migration represents a single schema migration with a version and SQL body.
+type migration struct {
+	version int
+	sql     string
+}
+
 //go:embed migrations/001_initial.sql
-var migrationSQL string
+var migration001SQL string
 
 //go:embed migrations/002_task_metadata.sql
 var migration002SQL string
 
 //go:embed migrations/003_channel_ref_refactor.sql
 var migration003SQL string
+
+// migrations is the ordered list of all schema migrations. New migrations
+// must be appended with the next sequential version number.
+var migrations = []migration{
+	{version: 1, sql: migration001SQL},
+	{version: 2, sql: migration002SQL},
+	{version: 3, sql: migration003SQL},
+}
 
 // scannable is satisfied by both pgx.Row and pgx.Rows.
 type scannable interface {
@@ -51,11 +65,52 @@ func NewPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, 
 	return &PostgresStore{pool: pool}, nil
 }
 
-// Migrate runs all embedded SQL migrations.
+// Migrate applies all outstanding schema migrations. Each migration runs in
+// its own transaction and its version is recorded in the schema_migrations
+// table so it is never re-applied.
 func (s *PostgresStore) Migrate(ctx context.Context) error {
-	for i, sql := range []string{migrationSQL, migration002SQL, migration003SQL} {
-		if _, err := s.pool.Exec(ctx, sql); err != nil {
-			return fmt.Errorf("running migration %03d: %w", i+1, err)
+	// Ensure the version-tracking table exists. This statement is
+	// deliberately idempotent so it is safe to run on every startup.
+	if _, err := s.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version INTEGER PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`); err != nil {
+		return fmt.Errorf("creating schema_migrations table: %w", err)
+	}
+
+	for _, m := range migrations {
+		// Check whether this migration has already been applied.
+		var exists bool
+		err := s.pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`,
+			m.version).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("checking migration %d: %w", m.version, err)
+		}
+		if exists {
+			continue
+		}
+
+		// Run the migration inside a transaction.
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("beginning transaction for migration %d: %w", m.version, err)
+		}
+
+		if _, err := tx.Exec(ctx, m.sql); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("running migration %d: %w", m.version, err)
+		}
+
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO schema_migrations (version) VALUES ($1)`, m.version); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("recording migration %d: %w", m.version, err)
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("committing migration %d: %w", m.version, err)
 		}
 	}
 	return nil
