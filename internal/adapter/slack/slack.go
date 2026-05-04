@@ -3,7 +3,7 @@ package slack
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/creydr/ai-coworker/internal/adapter"
@@ -83,7 +83,7 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 			}
 
 			if err := handler(ctx, incomingEvent); err != nil {
-				log.Printf("error handling slack event: %v", err)
+				slog.Error("error handling slack event", "error", err)
 			}
 		}
 	}()

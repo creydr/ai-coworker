@@ -3,7 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/creydr/ai-coworker/internal/domain"
@@ -53,14 +53,14 @@ func (wp *WorkerPool) runWorker(ctx context.Context, workerID string) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("[%s] stopping: context cancelled", workerID)
+			slog.Info("stopping: context cancelled", "worker", workerID)
 			return
 		default:
 		}
 
 		task, err := wp.store.ClaimNextTask(ctx, workerID)
 		if err != nil {
-			log.Printf("[%s] error claiming task: %v", workerID, err)
+			slog.Error("error claiming task", "worker", workerID, "error", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -126,20 +126,20 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		Event:    &event,
 	}
 
-	log.Printf("[%s] executing task %s (intent=%s, thread=%s)", workerID, task.ID, intent, thread.ChannelRef.ThreadKey)
+	slog.Info("executing task", "worker", workerID, "task", task.ID, "intent", intent, "thread", thread.ChannelRef.ThreadKey)
 	result, err := exec.Execute(ctx, execCtx)
 	if err != nil {
 		wp.failTask(ctx, workerID, task, fmt.Errorf("executing task: %w", err))
 		wp.sendResponse(ctx, thread.ChannelRef, fmt.Sprintf("Sorry, I encountered an error while processing your request: %v", err))
 		return
 	}
-	log.Printf("[%s] task %s completed, response length=%d", workerID, task.ID, len(result.Response))
+	slog.Info("task completed", "worker", workerID, "task", task.ID, "response_len", len(result.Response))
 
 	// Mark task as completed.
 	task.Status = domain.TaskCompleted
 	task.Result = result.Response
 	if err := wp.store.UpdateTask(ctx, task); err != nil {
-		log.Printf("[%s] error updating task %s to completed: %v", workerID, task.ID, err)
+		slog.Error("error updating task to completed", "worker", workerID, "task", task.ID, "error", err)
 	}
 
 	// Store the assistant response as a message.
@@ -149,7 +149,7 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		Content:  result.Response,
 	}
 	if err := wp.store.CreateMessage(ctx, assistantMsg); err != nil {
-		log.Printf("[%s] error storing assistant message for task %s: %v", workerID, task.ID, err)
+		slog.Error("error storing assistant message", "worker", workerID, "task", task.ID, "error", err)
 	}
 
 	// Enrich the ChannelRef with task metadata for proper response routing.
@@ -171,21 +171,21 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 }
 
 func (wp *WorkerPool) failTask(ctx context.Context, workerID string, task *domain.Task, err error) {
-	log.Printf("[%s] task %s failed: %v", workerID, task.ID, err)
+	slog.Error("task failed", "worker", workerID, "task", task.ID, "error", err)
 	task.Status = domain.TaskFailed
 	task.Result = err.Error()
 	if updateErr := wp.store.UpdateTask(ctx, task); updateErr != nil {
-		log.Printf("[%s] error updating task %s to failed: %v", workerID, task.ID, updateErr)
+		slog.Error("error updating task to failed", "worker", workerID, "task", task.ID, "error", updateErr)
 	}
 }
 
 func (wp *WorkerPool) sendResponse(ctx context.Context, ref domain.ChannelRef, message string) {
 	a := wp.router.GetAdapter(ref.Channel)
 	if a == nil {
-		log.Printf("no adapter registered for channel %q", ref.Channel)
+		slog.Warn("no adapter registered for channel", "channel", ref.Channel)
 		return
 	}
 	if err := a.SendResponse(ctx, ref, message); err != nil {
-		log.Printf("error sending response on %s: %v", ref.Channel, err)
+		slog.Error("error sending response", "channel", ref.Channel, "error", err)
 	}
 }

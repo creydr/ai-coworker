@@ -3,7 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -76,7 +76,7 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 	go func() {
 		<-ctx.Done()
 		if err := a.server.Close(); err != nil {
-			log.Printf("error closing github webhook server: %v", err)
+			slog.Error("error closing github webhook server", "error", err)
 		}
 	}()
 
@@ -108,7 +108,7 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 		a.repoInstallations.Store(repoFullName, installationID)
 
 		if err := a.handleIssueComment(ctx, e, installationID, handler); err != nil {
-			log.Printf("error handling issue comment event: %v", err)
+			slog.Error("error handling issue comment event", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -119,7 +119,7 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 		a.repoInstallations.Store(repoFullName, installationID)
 
 		if err := a.handlePRReviewComment(ctx, e, installationID, handler); err != nil {
-			log.Printf("error handling PR review comment event: %v", err)
+			slog.Error("error handling PR review comment event", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -130,7 +130,7 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 		a.repoInstallations.Store(repoFullName, installationID)
 
 		if err := a.handlePRReview(ctx, e, installationID, handler); err != nil {
-			log.Printf("error handling PR review event: %v", err)
+			slog.Error("error handling PR review event", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
