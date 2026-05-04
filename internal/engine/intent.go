@@ -66,14 +66,14 @@ func (c *IntentClassifier) Classify(ctx context.Context, event domain.IncomingEv
 func parseIntent(response string) domain.Intent {
 	normalized := strings.ToLower(strings.TrimSpace(response))
 
-	switch {
-	case strings.Contains(normalized, "code_task"):
+	switch normalized {
+	case "code_task":
 		return domain.IntentCodeTask
-	case strings.Contains(normalized, "review"):
+	case "review":
 		return domain.IntentReview
-	case strings.Contains(normalized, "question"):
+	case "question":
 		return domain.IntentQuestion
-	case strings.Contains(normalized, "discussion"):
+	case "discussion":
 		return domain.IntentDiscussion
 	default:
 		return domain.IntentUnknown
