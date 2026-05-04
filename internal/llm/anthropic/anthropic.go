@@ -1,4 +1,4 @@
-package claude
+package anthropic
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/anthropics/anthropic-sdk-go/vertex"
 	"github.com/creydr/ai-coworker/internal/llm"
 )
 
@@ -22,6 +23,16 @@ func New(apiKey, model string) *Provider {
 	}
 }
 
+func NewVertex(ctx context.Context, projectID, region, model string) *Provider {
+	client := anthropic.NewClient(
+		vertex.WithGoogleAuth(ctx, region, projectID),
+	)
+	return &Provider{
+		client: &client,
+		model:  model,
+	}
+}
+
 func (p *Provider) Chat(ctx context.Context, messages []llm.Message) (string, error) {
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
 		MaxTokens: 4096,
@@ -29,7 +40,7 @@ func (p *Provider) Chat(ctx context.Context, messages []llm.Message) (string, er
 		Messages:  convertMessages(messages),
 	})
 	if err != nil {
-		return "", fmt.Errorf("claude chat: %w", err)
+		return "", fmt.Errorf("anthropic chat: %w", err)
 	}
 
 	for _, block := range resp.Content {
@@ -38,7 +49,7 @@ func (p *Provider) Chat(ctx context.Context, messages []llm.Message) (string, er
 		}
 	}
 
-	return "", fmt.Errorf("claude chat: no text block in response")
+	return "", fmt.Errorf("anthropic chat: no text block in response")
 }
 
 func convertMessages(messages []llm.Message) []anthropic.MessageParam {

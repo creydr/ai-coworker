@@ -14,9 +14,8 @@ import (
 	"github.com/creydr/ai-coworker/internal/executor/claudecode"
 	"github.com/creydr/ai-coworker/internal/executor/llmexec"
 	"github.com/creydr/ai-coworker/internal/llm"
-	"github.com/creydr/ai-coworker/internal/llm/claude"
+	llmanthropic "github.com/creydr/ai-coworker/internal/llm/anthropic"
 	llmopenai "github.com/creydr/ai-coworker/internal/llm/openai"
-	"github.com/creydr/ai-coworker/internal/llm/vertex"
 	"github.com/creydr/ai-coworker/internal/sandbox/docker"
 	"github.com/creydr/ai-coworker/internal/store"
 )
@@ -55,16 +54,11 @@ func main() {
 	var llmProvider llm.Provider
 	switch cfg.LLM.Provider {
 	case "vertex":
-		var err error
-		llmProvider, err = vertex.New(ctx, cfg.LLM.Vertex.ProjectID, cfg.LLM.Vertex.Region, cfg.LLM.Model)
-		if err != nil {
-			slog.Error("failed to create vertex LLM provider", "error", err)
-			os.Exit(1)
-		}
+		llmProvider = llmanthropic.NewVertex(ctx, cfg.LLM.Vertex.ProjectID, cfg.LLM.Vertex.Region, cfg.LLM.Model)
 	case "openai":
 		llmProvider = llmopenai.New(cfg.LLM.OpenAI.BaseURL, cfg.LLM.APIKey, cfg.LLM.Model)
 	default:
-		llmProvider = claude.New(cfg.LLM.APIKey, cfg.LLM.Model)
+		llmProvider = llmanthropic.New(cfg.LLM.APIKey, cfg.LLM.Model)
 	}
 
 	// 5. Create Router with the store.
