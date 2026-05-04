@@ -1,4 +1,4 @@
-package vertex
+package anthropic
 
 import (
 	"testing"
