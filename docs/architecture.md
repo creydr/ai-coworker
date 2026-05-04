@@ -91,7 +91,7 @@ Short-circuits for review events: if the metadata contains `review_state` or `ty
 
 ### Executors
 
-**Claude Code Executor** (`internal/executor/claudecode/`) — For code tasks and reviews. Spawns an ephemeral Docker container with:
+**Claude Code Executor** (`internal/executor/claudecode/`) — For code tasks and reviews. Spawns an ephemeral container (Docker or Kubernetes Job, depending on the configured sandbox runtime) with:
 
 - The target repo cloned (with optional branch checkout for PR work)
 - Claude Code CLI running with `--dangerously-skip-permissions`
@@ -129,7 +129,12 @@ type Runtime interface {
 }
 ```
 
-The Docker runtime (`internal/sandbox/docker/`) creates ephemeral containers from the sandbox image (`sandbox/Dockerfile`). The sandbox image is based on `node:22-bookworm` with `git`, `gh` (GitHub CLI), and `@anthropic-ai/claude-code` installed. The entrypoint script (`sandbox/entrypoint.sh`) handles git credential setup, Google Cloud ADC setup, repo cloning, and Claude Code execution.
+Two runtime implementations:
+
+- **Docker** (`internal/sandbox/docker/`) — Creates ephemeral containers locally. Default for development.
+- **Kubernetes** (`internal/sandbox/kubernetes/`) — Creates Kubernetes Jobs with the prompt delivered via a ConfigMap volume. Used when the service runs on a cluster.
+
+Both runtimes use the same sandbox image (`sandbox/Dockerfile`), based on `node:22-bookworm` with `git`, `gh` (GitHub CLI), and `@anthropic-ai/claude-code` installed. The entrypoint script (`sandbox/entrypoint.sh`) handles git credential setup, Google Cloud ADC setup, repo cloning, and Claude Code execution.
 
 ### Store
 

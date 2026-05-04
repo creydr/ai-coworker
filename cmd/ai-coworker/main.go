@@ -16,7 +16,9 @@ import (
 	"github.com/creydr/ai-coworker/internal/llm"
 	llmanthropic "github.com/creydr/ai-coworker/internal/llm/anthropic"
 	llmopenai "github.com/creydr/ai-coworker/internal/llm/openai"
+	"github.com/creydr/ai-coworker/internal/sandbox"
 	"github.com/creydr/ai-coworker/internal/sandbox/docker"
+	k8ssandbox "github.com/creydr/ai-coworker/internal/sandbox/kubernetes"
 	"github.com/creydr/ai-coworker/internal/store"
 )
 
@@ -96,11 +98,23 @@ func main() {
 		slog.Info("github adapter enabled", "app_id", cfg.GitHub.AppID, "private_key_len", len(cfg.GitHub.PrivateKey))
 	}
 
-	// 8. Create Docker sandbox runtime.
-	sandboxRuntime, err := docker.New()
-	if err != nil {
-		slog.Error("failed to create docker sandbox runtime", "error", err)
-		os.Exit(1)
+	// 8. Create sandbox runtime.
+	var sandboxRuntime sandbox.Runtime
+	switch cfg.Sandbox.Runtime {
+	case "kubernetes":
+		sandboxRuntime, err = k8ssandbox.New(cfg.Sandbox.Namespace, cfg.Sandbox.ServiceAccount)
+		if err != nil {
+			slog.Error("failed to create kubernetes sandbox runtime", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("sandbox runtime: kubernetes", "namespace", cfg.Sandbox.Namespace)
+	default:
+		sandboxRuntime, err = docker.New()
+		if err != nil {
+			slog.Error("failed to create docker sandbox runtime", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("sandbox runtime: docker")
 	}
 
 	// 9. Create Claude Code executor with sandbox runtime.

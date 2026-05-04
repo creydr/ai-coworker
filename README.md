@@ -104,6 +104,9 @@ Secrets and deployment-specific values must be set via environment variables:
 | `AI_COWORKER__LLM__VERTEX__REGION` | Vertex AI region (defaults to `global`) |
 | `AI_COWORKER__LLM__OPENAI__BASE_URL` | Base URL for OpenAI-compatible API |
 | `AI_COWORKER__DATABASE__URL` | PostgreSQL connection string (overrides config file) |
+| `AI_COWORKER__SANDBOX__RUNTIME` | Sandbox runtime: `docker` (default) or `kubernetes` |
+| `AI_COWORKER__SANDBOX__NAMESPACE` | Kubernetes namespace for sandbox Jobs (required for `kubernetes` runtime) |
+| `AI_COWORKER__SANDBOX__SERVICE_ACCOUNT` | ServiceAccount for sandbox Job pods (optional) |
 
 #### LLM Providers
 
@@ -267,6 +270,7 @@ internal/
     openai/               OpenAI-compatible API
   sandbox/                Sandbox runtime interface
     docker/               Docker container runtime
+    kubernetes/           Kubernetes Job runtime
   store/                  Data store interface + PostgreSQL implementation
     migrations/           SQL migration files
 sandbox/                  Dockerfile and entrypoint for sandbox image
