@@ -154,6 +154,44 @@ Or with environment variables inline:
 AI_COWORKER__LLM__API_KEY=sk-ant-... make run
 ```
 
+### 5. Deploy on Kubernetes (optional)
+
+Kustomize manifests are provided in `deploy/kubernetes/`. They include a Deployment, Service, RBAC for sandbox Job creation, and config/secret templates. The service requires a PostgreSQL database — you can either provide your own or use the included overlay.
+
+**Option A: Bring your own database**
+
+Point `AI_COWORKER__DATABASE__URL` (or the ConfigMap) at an existing PostgreSQL instance:
+
+```sh
+# Edit the secret with your API keys
+vi deploy/kubernetes/base/secret.yaml
+
+# Apply all resources
+kubectl apply -k deploy/kubernetes/base/
+```
+
+**Option B: Deploy PostgreSQL alongside the service**
+
+An overlay at `deploy/kubernetes/overlays/with-postgres/` adds a PostgreSQL 16 StatefulSet with a 1Gi PersistentVolumeClaim. The default ConfigMap already points to this instance. This is suitable for development and testing — for production, use a managed database or operator.
+
+```sh
+# Edit the secret with your API keys
+vi deploy/kubernetes/base/secret.yaml
+
+# Apply with the PostgreSQL overlay
+kubectl apply -k deploy/kubernetes/overlays/with-postgres/
+```
+
+The Deployment mounts `config.yaml` from a ConfigMap and injects secrets as environment variables. The sandbox runtime is pre-configured to `kubernetes` with Jobs created in the `ai-coworker` namespace.
+
+To customize the image tag:
+
+```sh
+cd deploy/kubernetes/base && kustomize edit set image quay.io/creydr/ai-coworker:v1.0.0
+```
+
+For GitHub webhook delivery, expose the Service via an Ingress or LoadBalancer pointing to port 8080.
+
 ## GitHub App Setup
 
 1. Go to **Settings > Developer settings > GitHub Apps > New GitHub App**.
@@ -274,4 +312,7 @@ internal/
   store/                  Data store interface + PostgreSQL implementation
     migrations/           SQL migration files
 sandbox/                  Dockerfile and entrypoint for sandbox image
+deploy/kubernetes/        Kustomize manifests for Kubernetes deployment
+  base/                   Base manifests (Deployment, Service, RBAC, config)
+  overlays/with-postgres/ Optional overlay that includes PostgreSQL
 ```
