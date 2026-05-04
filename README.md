@@ -154,6 +154,28 @@ Or with environment variables inline:
 AI_COWORKER__LLM__API_KEY=sk-ant-... make run
 ```
 
+### 5. Deploy on Kubernetes (optional)
+
+Kustomize manifests are provided in `deploy/kubernetes/`. They include a Deployment, Service, RBAC for sandbox Job creation, and config/secret templates.
+
+```sh
+# Edit the secret with your API keys
+vi deploy/kubernetes/secret.yaml
+
+# Apply all resources
+kubectl apply -k deploy/kubernetes/
+```
+
+The Deployment mounts `config.yaml` from a ConfigMap and injects secrets as environment variables. The sandbox runtime is pre-configured to `kubernetes` with Jobs created in the `ai-coworker` namespace.
+
+To customize the image tag:
+
+```sh
+cd deploy/kubernetes && kustomize edit set image quay.io/creydr/ai-coworker:v1.0.0
+```
+
+For GitHub webhook delivery, expose the Service via an Ingress or LoadBalancer pointing to port 8080.
+
 ## GitHub App Setup
 
 1. Go to **Settings > Developer settings > GitHub Apps > New GitHub App**.
@@ -274,4 +296,5 @@ internal/
   store/                  Data store interface + PostgreSQL implementation
     migrations/           SQL migration files
 sandbox/                  Dockerfile and entrypoint for sandbox image
+deploy/kubernetes/        Kustomize manifests for Kubernetes deployment
 ```
