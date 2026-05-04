@@ -6,8 +6,8 @@ data:
   config.yaml: |
     listen_addr: ":8080"
 
-    database:
-      url: "postgres://ai-coworker:password@postgres:5432/ai-coworker?sslmode=disable"
+    # database.url is overridden by AI_COWORKER__DATABASE__URL from the Secret
+    database: {}
 
     llm:
       provider: "claude"
