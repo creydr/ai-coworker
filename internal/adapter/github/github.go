@@ -16,6 +16,7 @@ import (
 	"github.com/creydr/ai-coworker/internal/domain"
 )
 
+// Adapter implements the adapter interface for GitHub using webhooks and the GitHub API
 type Adapter struct {
 	appsTransport       *ghinstallation.AppsTransport
 	installationClients sync.Map // maps int64 installationID → *gh.Client
@@ -26,6 +27,7 @@ type Adapter struct {
 	server              *http.Server
 }
 
+// New creates a new GitHub adapter with the given app credentials and configuration
 func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAddr string) (*Adapter, error) {
 	atr, err := ghinstallation.NewAppsTransport(http.DefaultTransport, appID, privateKeyPEM)
 	if err != nil {

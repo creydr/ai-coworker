@@ -11,6 +11,7 @@ import (
 	"github.com/creydr/ai-coworker/internal/sandbox"
 )
 
+// Executor runs tasks by invoking Claude Code inside a sandboxed container
 type Executor struct {
 	runtime         sandbox.Runtime
 	image           string
@@ -22,6 +23,7 @@ type Executor struct {
 	GitHubTokenFunc func(ctx context.Context, repo string) (string, error)
 }
 
+// Config holds the configuration for creating a Claude Code executor
 type Config struct {
 	Runtime         sandbox.Runtime
 	Image           string
@@ -33,6 +35,7 @@ type Config struct {
 	GitHubTokenFunc func(ctx context.Context, repo string) (string, error)
 }
 
+// New creates a new Claude Code executor from the given configuration
 func New(cfg Config) *Executor {
 	return &Executor{
 		runtime:         cfg.Runtime,

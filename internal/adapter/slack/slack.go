@@ -13,12 +13,14 @@ import (
 	"github.com/slack-go/slack/socketmode"
 )
 
+// Adapter implements the adapter interface for Slack using Socket Mode
 type Adapter struct {
 	client       *slack.Client
 	socketClient *socketmode.Client
 	botUserID    string
 }
 
+// New creates a new Slack adapter with the given app-level and bot tokens
 func New(appToken, botToken string) *Adapter {
 	client := slack.New(
 		botToken,

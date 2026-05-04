@@ -16,11 +16,13 @@ const (
 	defaultMaxTokens = 4096
 )
 
+// Provider implements the LLM provider interface using the Anthropic API.
 type Provider struct {
 	client *anthropic.Client
 	model  string
 }
 
+// New creates a new Anthropic provider with the given API key and model
 func New(apiKey, model string) *Provider {
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
 	return &Provider{
@@ -29,6 +31,7 @@ func New(apiKey, model string) *Provider {
 	}
 }
 
+// NewVertex creates a new Anthropic provider that uses Vertex AI as the backend
 func NewVertex(ctx context.Context, projectID, region, model string) *Provider {
 	client := anthropic.NewClient(
 		vertex.WithGoogleAuth(ctx, region, projectID),

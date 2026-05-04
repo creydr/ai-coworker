@@ -7,6 +7,7 @@ import (
 	"github.com/creydr/ai-coworker/internal/domain"
 )
 
+// GitHubRef holds the parsed properties of a GitHub channel reference
 type GitHubRef struct {
 	Repo        string
 	IssueNum    int
@@ -14,6 +15,7 @@ type GitHubRef struct {
 	CommentType string
 }
 
+// NewRef creates a new GitHub channel reference for the given repo and issue number
 func NewRef(repo string, issueNum int) domain.ChannelRef {
 	return domain.ChannelRef{
 		Channel:   "github",
@@ -25,6 +27,7 @@ func NewRef(repo string, issueNum int) domain.ChannelRef {
 	}
 }
 
+// WithComment returns a copy of ref with the given comment ID and type attached
 func WithComment(ref domain.ChannelRef, commentID int64, commentType string) domain.ChannelRef {
 	if ref.Properties == nil {
 		ref.Properties = make(map[string]string)
@@ -34,6 +37,7 @@ func WithComment(ref domain.ChannelRef, commentID int64, commentType string) dom
 	return ref
 }
 
+// ParseRef extracts a GitHubRef from a generic channel reference
 func ParseRef(ref domain.ChannelRef) GitHubRef {
 	if ref.Properties == nil {
 		return GitHubRef{}
