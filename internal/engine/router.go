@@ -2,9 +2,9 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
-	"strings"
 
 	"github.com/creydr/ai-coworker/internal/adapter"
 	"github.com/creydr/ai-coworker/internal/domain"
@@ -50,7 +50,7 @@ func (r *Router) HandleEvent(ctx context.Context, event domain.IncomingEvent) er
 	ref := event.ChannelRef
 	thread, err := r.store.GetThreadByChannelRef(ctx, ref.Channel, ref.ThreadKey)
 	if err != nil {
-		if !strings.Contains(err.Error(), "thread not found") {
+		if !errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("looking up thread: %w", err)
 		}
 
