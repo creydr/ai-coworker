@@ -1,0 +1,42 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - misspell
+    - revive
+    - unconvert
+    - unparam
+    - gocritic
+
+  exclusions:
+    rules:
+      # ignore errcheck in defer
+      - linters:
+          - errcheck
+        source: "^\\s*defer\\s+"
+
+  settings:
+    gocritic:
+      disabled-checks:
+        - exitAfterDefer
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+
+formatters:
+  enable:
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/creydr/ai-coworker

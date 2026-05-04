@@ -6,11 +6,12 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/creydr/ai-coworker/internal/adapter"
-	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+
+	"github.com/creydr/ai-coworker/internal/adapter"
+	"github.com/creydr/ai-coworker/internal/domain"
 )
 
 // Adapter implements the adapter interface for Slack using Socket Mode
@@ -56,7 +57,7 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 				continue
 			}
 
-			a.socketClient.Ack(*evt.Request)
+			a.socketClient.Ack(*evt.Request) //nolint:errcheck // best-effort ack
 
 			if eventsAPIEvent.InnerEvent.Type != string(slackevents.AppMention) {
 				continue

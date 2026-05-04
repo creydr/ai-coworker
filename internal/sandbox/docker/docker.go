@@ -11,11 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/creydr/ai-coworker/internal/sandbox"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+
+	"github.com/creydr/ai-coworker/internal/sandbox"
 )
 
 var _ sandbox.Runtime = (*Runtime)(nil)
@@ -76,10 +77,10 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 	}
 	defer os.Remove(promptFile.Name())
 	if _, err := promptFile.WriteString(req.Prompt); err != nil {
-		promptFile.Close()
+		_ = promptFile.Close()
 		return nil, fmt.Errorf("failed to write prompt file: %w", err)
 	}
-	promptFile.Close()
+	_ = promptFile.Close()
 	if err := os.Chmod(promptFile.Name(), 0644); err != nil {
 		return nil, fmt.Errorf("failed to chmod prompt file: %w", err)
 	}
@@ -159,7 +160,7 @@ func (r *Runtime) ensureImage(ctx context.Context, img string) error {
 		return fmt.Errorf("failed to pull image %s: %w", img, err)
 	}
 	_, _ = io.Copy(io.Discard, pullReader)
-	pullReader.Close()
+	_ = pullReader.Close()
 	return nil
 }
 
