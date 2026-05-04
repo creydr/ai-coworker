@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strconv"
@@ -81,7 +82,9 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 		return nil, fmt.Errorf("failed to chmod prompt file: %w", err)
 	}
 
-	binds := append(req.Binds, promptFile.Name()+":/tmp/prompt.txt:ro")
+	binds := make([]string, len(req.Binds), len(req.Binds)+1)
+	copy(binds, req.Binds)
+	binds = append(binds, promptFile.Name()+":/tmp/prompt.txt:ro")
 	hostCfg := &container.HostConfig{
 		Resources: resources,
 		Binds:     binds,
@@ -97,6 +100,7 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 	if err != nil {
 		return nil, fmt.Errorf("failed to pull image %s: %w", req.Image, err)
 	}
+	_, _ = io.Copy(io.Discard, pullReader)
 	pullReader.Close()
 
 	resp, err := r.client.ContainerCreate(ctx, cfg, hostCfg, nil, nil, "")
