@@ -11,6 +11,11 @@ import (
 	"github.com/creydr/ai-coworker/internal/llm"
 )
 
+const (
+	// defaultMaxTokens is the maximum number of tokens the model will generate in a response.
+	defaultMaxTokens = 4096
+)
+
 type Provider struct {
 	client *anthropic.Client
 	model  string
@@ -38,7 +43,7 @@ func (p *Provider) Chat(ctx context.Context, messages []llm.Message) (string, er
 	systemBlocks, chatMessages := convertMessages(messages)
 
 	params := anthropic.MessageNewParams{
-		MaxTokens: 4096,
+		MaxTokens: defaultMaxTokens,
 		Model:     anthropic.Model(p.model),
 		Messages:  chatMessages,
 	}

@@ -10,6 +10,17 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
+const (
+	// defaultListenAddr is the default address the HTTP server listens on.
+	defaultListenAddr = ":8080"
+	// defaultWorkers is the default number of concurrent task workers.
+	defaultWorkers = 4
+	// defaultSandboxTimeoutSeconds is the default sandbox execution timeout in seconds.
+	defaultSandboxTimeoutSeconds = 600
+	// defaultVertexRegion is the default Google Cloud region for Vertex AI.
+	defaultVertexRegion = "global"
+)
+
 type Config struct {
 	ListenAddr string         `koanf:"listen_addr"`
 	Database   DatabaseConfig `koanf:"database"`
@@ -86,16 +97,16 @@ func Load(path string) (*Config, error) {
 
 	// Apply defaults
 	if cfg.ListenAddr == "" {
-		cfg.ListenAddr = ":8080"
+		cfg.ListenAddr = defaultListenAddr
 	}
 	if cfg.Workers == 0 {
-		cfg.Workers = 4
+		cfg.Workers = defaultWorkers
 	}
 	if cfg.Sandbox.TimeoutSeconds == 0 {
-		cfg.Sandbox.TimeoutSeconds = 600
+		cfg.Sandbox.TimeoutSeconds = defaultSandboxTimeoutSeconds
 	}
 	if cfg.LLM.Vertex.Region == "" {
-		cfg.LLM.Vertex.Region = "global"
+		cfg.LLM.Vertex.Region = defaultVertexRegion
 	}
 
 	if err := cfg.validate(); err != nil {
