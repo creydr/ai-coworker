@@ -57,7 +57,7 @@ make sandbox-image
 
 ### 3. Configure
 
-All configuration can be provided via `config.yaml` or environment variables with the `AI_COWORKER_` prefix. Environment variables override the config file.
+All configuration can be provided via `config.yaml` or environment variables with the `AI_COWORKER__` prefix (double underscore). Use `__` to separate nested sections, single `_` within field names is preserved. Environment variables override the config file.
 
 The config file (`config.yaml`) ships with safe defaults for local development:
 
@@ -89,30 +89,30 @@ Secrets and deployment-specific values must be set via environment variables:
 
 | Variable | Description |
 |---|---|
-| `AI_COWORKER_LLM_API_KEY` | Anthropic API key |
-| `AI_COWORKER_GITHUB_ENABLED` | Set to `true` to enable the GitHub adapter |
-| `AI_COWORKER_GITHUB_APP_ID` | GitHub App ID |
-| `AI_COWORKER_GITHUB_PRIVATE_KEY` | GitHub App private key (PEM contents) |
-| `AI_COWORKER_GITHUB_WEBHOOK_SECRET` | GitHub webhook secret |
-| `AI_COWORKER_GITHUB_BOT_USERNAME` | GitHub App bot username (e.g. `creydr-ai[bot]`) |
-| `AI_COWORKER_SLACK_ENABLED` | Set to `true` to enable the Slack adapter |
-| `AI_COWORKER_SLACK_APP_TOKEN` | Slack app-level token (`xapp-...`) |
-| `AI_COWORKER_SLACK_BOT_TOKEN` | Slack bot token (`xoxb-...`) |
-| `AI_COWORKER_LLM_VERTEX_PROJECT_ID` | Google Cloud project ID (Vertex AI provider) |
-| `AI_COWORKER_LLM_VERTEX_REGION` | Vertex AI region (defaults to `global`) |
-| `AI_COWORKER_LLM_OPENAI_BASE_URL` | Base URL for OpenAI-compatible API |
-| `AI_COWORKER_DATABASE_URL` | PostgreSQL connection string (overrides config file) |
+| `AI_COWORKER__LLM__API_KEY` | Anthropic API key |
+| `AI_COWORKER__GITHUB__ENABLED` | Set to `true` to enable the GitHub adapter |
+| `AI_COWORKER__GITHUB__APP_ID` | GitHub App ID |
+| `AI_COWORKER__GITHUB__PRIVATE_KEY` | GitHub App private key (PEM contents) |
+| `AI_COWORKER__GITHUB__WEBHOOK_SECRET` | GitHub webhook secret |
+| `AI_COWORKER__GITHUB__BOT_USERNAME` | GitHub App bot username (e.g. `creydr-ai[bot]`) |
+| `AI_COWORKER__SLACK__ENABLED` | Set to `true` to enable the Slack adapter |
+| `AI_COWORKER__SLACK__APP_TOKEN` | Slack app-level token (`xapp-...`) |
+| `AI_COWORKER__SLACK__BOT_TOKEN` | Slack bot token (`xoxb-...`) |
+| `AI_COWORKER__LLM__VERTEX__PROJECT_ID` | Google Cloud project ID (Vertex AI provider) |
+| `AI_COWORKER__LLM__VERTEX__REGION` | Vertex AI region (defaults to `global`) |
+| `AI_COWORKER__LLM__OPENAI__BASE_URL` | Base URL for OpenAI-compatible API |
+| `AI_COWORKER__DATABASE__URL` | PostgreSQL connection string (overrides config file) |
 
 #### LLM Providers
 
-The `AI_COWORKER_LLM_PROVIDER` variable selects which LLM backend to use:
+The `AI_COWORKER__LLM__PROVIDER` variable selects which LLM backend to use:
 
 **Claude API (default):**
 
 ```sh
-export AI_COWORKER_LLM_PROVIDER=claude
-export AI_COWORKER_LLM_API_KEY=sk-ant-...
-export AI_COWORKER_LLM_MODEL=claude-sonnet-4-20250514
+export AI_COWORKER__LLM__PROVIDER=claude
+export AI_COWORKER__LLM__API_KEY=sk-ant-...
+export AI_COWORKER__LLM__MODEL=claude-sonnet-4-20250514
 ```
 
 **Vertex AI (Claude on Google Cloud):**
@@ -120,10 +120,10 @@ export AI_COWORKER_LLM_MODEL=claude-sonnet-4-20250514
 Uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials). Run `gcloud auth application-default login` first.
 
 ```sh
-export AI_COWORKER_LLM_PROVIDER=vertex
-export AI_COWORKER_LLM_VERTEX_PROJECT_ID=my-gcp-project
-export AI_COWORKER_LLM_VERTEX_REGION=global  # optional, defaults to "global"
-export AI_COWORKER_LLM_MODEL=claude-sonnet-4-20250514
+export AI_COWORKER__LLM__PROVIDER=vertex
+export AI_COWORKER__LLM__VERTEX__PROJECT_ID=my-gcp-project
+export AI_COWORKER__LLM__VERTEX__REGION=global  # optional, defaults to "global"
+export AI_COWORKER__LLM__MODEL=claude-sonnet-4-20250514
 ```
 
 **OpenAI-compatible API (Red Hat MaaS, vLLM, etc.):**
@@ -131,10 +131,10 @@ export AI_COWORKER_LLM_MODEL=claude-sonnet-4-20250514
 Works with any service that exposes an OpenAI-compatible chat completions endpoint.
 
 ```sh
-export AI_COWORKER_LLM_PROVIDER=openai
-export AI_COWORKER_LLM_OPENAI_BASE_URL=https://my-maas-endpoint.example.com/v1
-export AI_COWORKER_LLM_API_KEY=...  # if required by the endpoint
-export AI_COWORKER_LLM_MODEL=granite-3.3-8b
+export AI_COWORKER__LLM__PROVIDER=openai
+export AI_COWORKER__LLM__OPENAI__BASE_URL=https://my-maas-endpoint.example.com/v1
+export AI_COWORKER__LLM__API_KEY=...  # if required by the endpoint
+export AI_COWORKER__LLM__MODEL=granite-3.3-8b
 ```
 
 ### 4. Run
@@ -146,7 +146,7 @@ make run
 Or with environment variables inline:
 
 ```sh
-AI_COWORKER_LLM_API_KEY=sk-ant-... make run
+AI_COWORKER__LLM__API_KEY=sk-ant-... make run
 ```
 
 ## GitHub App Setup
@@ -171,11 +171,11 @@ AI_COWORKER_LLM_API_KEY=sk-ant-... make run
 6. Install the app on the repositories you want it to monitor.
 7. Set the environment variables:
    ```sh
-   export AI_COWORKER_GITHUB_ENABLED=true
-   export AI_COWORKER_GITHUB_APP_ID=<your-app-id>
-   export AI_COWORKER_GITHUB_PRIVATE_KEY="$(cat path/to/private-key.pem)"
-   export AI_COWORKER_GITHUB_WEBHOOK_SECRET=<your-webhook-secret>
-   export AI_COWORKER_GITHUB_BOT_USERNAME=<your-app-name>[bot]
+   export AI_COWORKER__GITHUB__ENABLED=true
+   export AI_COWORKER__GITHUB__APP_ID=<your-app-id>
+   export AI_COWORKER__GITHUB__PRIVATE_KEY="$(cat path/to/private-key.pem)"
+   export AI_COWORKER__GITHUB__WEBHOOK_SECRET=<your-webhook-secret>
+   export AI_COWORKER__GITHUB__BOT_USERNAME=<your-app-name>[bot]
    ```
 
 The webhook server listens on port 8080. For local development, use a tool like [smee.io](https://smee.io) or [ngrok](https://ngrok.com) to expose it.
@@ -193,9 +193,9 @@ The webhook server listens on port 8080. For local development, use a tool like 
 5. Install the app to your workspace and copy the bot token.
 6. Set the environment variables:
    ```sh
-   export AI_COWORKER_SLACK_ENABLED=true
-   export AI_COWORKER_SLACK_APP_TOKEN=xapp-...
-   export AI_COWORKER_SLACK_BOT_TOKEN=xoxb-...
+   export AI_COWORKER__SLACK__ENABLED=true
+   export AI_COWORKER__SLACK__APP_TOKEN=xapp-...
+   export AI_COWORKER__SLACK__BOT_TOKEN=xoxb-...
    ```
 
 ## Usage
