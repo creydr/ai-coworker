@@ -16,8 +16,10 @@ func writeTempConfig(t *testing.T, content string) string {
 	return path
 }
 
+const minConfig = "database:\n  url: postgres://localhost/test\nllm:\n  provider: claude\n  api_key: sk-test\n  model: claude-sonnet-4-6\n"
+
 func TestLoad_Defaults(t *testing.T) {
-	path := writeTempConfig(t, "database:\n  url: postgres://localhost/test\n")
+	path := writeTempConfig(t, minConfig)
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -35,12 +37,14 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_EnvVarOverrides(t *testing.T) {
-	path := writeTempConfig(t, "database:\n  url: postgres://localhost/test\n")
+	path := writeTempConfig(t, minConfig)
 
 	t.Setenv("AI_COWORKER__LLM__API_KEY", "sk-test-key")
 	t.Setenv("AI_COWORKER__LLM__PROVIDER", "claude")
 	t.Setenv("AI_COWORKER__GITHUB__ENABLED", "true")
 	t.Setenv("AI_COWORKER__GITHUB__APP_ID", "12345")
+	t.Setenv("AI_COWORKER__GITHUB__PRIVATE_KEY", "fake-pem")
+	t.Setenv("AI_COWORKER__GITHUB__WEBHOOK_SECRET", "secret")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -62,8 +66,9 @@ func TestLoad_EnvVarOverrides(t *testing.T) {
 }
 
 func TestLoad_NestedEnvVars(t *testing.T) {
-	path := writeTempConfig(t, "database:\n  url: postgres://localhost/test\n")
+	path := writeTempConfig(t, minConfig)
 
+	t.Setenv("AI_COWORKER__LLM__PROVIDER", "vertex")
 	t.Setenv("AI_COWORKER__LLM__VERTEX__PROJECT_ID", "my-project")
 	t.Setenv("AI_COWORKER__LLM__VERTEX__REGION", "us-east1")
 	t.Setenv("AI_COWORKER__LLM__OPENAI__BASE_URL", "https://api.example.com/v1")
@@ -85,7 +90,7 @@ func TestLoad_NestedEnvVars(t *testing.T) {
 }
 
 func TestLoad_EnvVarOverridesConfigFile(t *testing.T) {
-	path := writeTempConfig(t, "llm:\n  provider: claude\n  model: old-model\ndatabase:\n  url: postgres://localhost/test\n")
+	path := writeTempConfig(t, "llm:\n  provider: claude\n  api_key: sk-test\n  model: old-model\ndatabase:\n  url: postgres://localhost/test\n")
 
 	t.Setenv("AI_COWORKER__LLM__MODEL", "new-model")
 
