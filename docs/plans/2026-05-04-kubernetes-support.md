@@ -148,3 +148,60 @@ Two PRs:
 **PR 2 — Kubernetes Deployment Manifests:**
 1. Create all manifests in `deploy/kubernetes/`
 2. Update README with deployment instructions
+
+**PR 3 — Local KinD E2E Testing:**
+1. Add Makefile targets for KinD lifecycle and testing
+2. Document the testing workflow
+
+## Local Testing with KinD
+
+For end-to-end testing of the Kubernetes deployment, we use [KinD](https://kind.sigs.k8s.io/) (Kubernetes in Docker) to spin up a local cluster.
+
+### What It Tests
+
+- Manifests apply cleanly (base + PostgreSQL overlay)
+- PostgreSQL StatefulSet starts and becomes ready
+- ai-coworker Deployment starts, connects to PostgreSQL, runs migrations
+- RBAC allows the service to create sandbox Jobs
+- GitHub webhooks reach the service via smee → port-forward
+- Sandbox Jobs execute and produce output
+
+### How It Works
+
+1. **KinD cluster** — a lightweight single-node K8s cluster running in Docker
+2. **Local images** — both `ai-coworker` and `ai-coworker-sandbox` are built locally and loaded into KinD (no registry push needed). Images are tagged with the full `quay.io/creydr/` prefix so the existing kustomization image references work without overrides.
+3. **PostgreSQL overlay** — uses `deploy/kubernetes/overlays/with-postgres/` to include a PostgreSQL instance in the cluster
+4. **Secrets** — patched from local environment variables (API keys, GitHub App credentials) at deploy time
+5. **Webhook routing** — `kubectl port-forward` exposes the service on `localhost:8080`, and `smee` proxies GitHub webhooks to it
+
+### Makefile Targets
+
+| Target | Description |
+|--------|-------------|
+| `kind-create` | Create a KinD cluster named `ai-coworker` |
+| `kind-load` | Build both images and load them into the KinD cluster |
+| `kind-deploy` | Deploy the with-postgres overlay, patch secrets from env vars, wait for rollout |
+| `kind-smee` | Port-forward the service and start smee for GitHub webhook delivery |
+| `kind-delete` | Tear down the KinD cluster |
+
+### Required Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `ANTHROPIC_API_KEY` | LLM provider API key |
+| `AI_COWORKER__GITHUB__APP_ID` | GitHub App ID |
+| `AI_COWORKER__GITHUB__PRIVATE_KEY` | GitHub App private key |
+| `AI_COWORKER__GITHUB__WEBHOOK_SECRET` | GitHub webhook secret |
+| `AI_COWORKER__GITHUB__BOT_USERNAME` | GitHub bot username |
+| `SMEE_URL` | smee.io channel URL (for `kind-smee` target) |
+
+### Typical Workflow
+
+```sh
+make kind-create          # create cluster
+make kind-load            # build & load images
+make kind-deploy          # deploy service + postgres, patch secrets
+make kind-smee            # start webhook forwarding
+# ... test by commenting on a GitHub issue ...
+make kind-delete          # tear down
+```
