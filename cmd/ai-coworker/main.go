@@ -154,4 +154,5 @@ func main() {
 	slog.Info("ai-coworker started", "workers", cfg.Workers, "llm_provider", cfg.LLM.Provider, "llm_model", cfg.LLM.Model)
 	<-ctx.Done()
 	slog.Info("ai-coworker shutting down")
+	pool.Wait()
 }
