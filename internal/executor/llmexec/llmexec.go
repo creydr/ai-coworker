@@ -23,7 +23,7 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 	var messages []llm.Message
 
 	messages = append(messages, llm.Message{
-		Role:    domain.RoleUser,
+		Role:    domain.RoleSystem,
 		Content: "You are a helpful AI coworker. Assist with questions, discussions, and reviews related to software development. Be concise and helpful.",
 	})
 

@@ -35,11 +35,18 @@ func NewVertex(ctx context.Context, projectID, region, model string) *Provider {
 }
 
 func (p *Provider) Chat(ctx context.Context, messages []llm.Message) (string, error) {
-	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+	systemBlocks, chatMessages := convertMessages(messages)
+
+	params := anthropic.MessageNewParams{
 		MaxTokens: 4096,
 		Model:     anthropic.Model(p.model),
-		Messages:  convertMessages(messages),
-	})
+		Messages:  chatMessages,
+	}
+	if len(systemBlocks) > 0 {
+		params.System = systemBlocks
+	}
+
+	resp, err := p.client.Messages.New(ctx, params)
 	if err != nil {
 		return "", fmt.Errorf("anthropic chat: %w", err)
 	}
@@ -53,15 +60,20 @@ func (p *Provider) Chat(ctx context.Context, messages []llm.Message) (string, er
 	return "", fmt.Errorf("anthropic chat: no text block in response")
 }
 
-func convertMessages(messages []llm.Message) []anthropic.MessageParam {
+func convertMessages(messages []llm.Message) ([]anthropic.TextBlockParam, []anthropic.MessageParam) {
+	var systemBlocks []anthropic.TextBlockParam
 	params := make([]anthropic.MessageParam, 0, len(messages))
+
 	for _, msg := range messages {
 		switch msg.Role {
+		case domain.RoleSystem:
+			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: msg.Content})
 		case domain.RoleUser:
 			params = append(params, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
 		case domain.RoleAssistant:
 			params = append(params, anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
 		}
 	}
-	return params
+
+	return systemBlocks, params
 }
