@@ -2,6 +2,8 @@
 
 An autonomous AI agent that executes software development tasks end-to-end through pluggable channel adapters. Ships with GitHub and Slack support — mention it on a GitHub issue and it will discuss the problem, write code, and open a pull request; tag it in Slack and it will answer questions or kick off tasks. New channels can be added by implementing the `adapter.Adapter` interface.
 
+https://github.com/user-attachments/assets/e59fb872-1747-41f7-94ff-21a8a600e898
+
 ## Architecture
 
 ```
