@@ -1,11 +1,11 @@
 # AI Coworker
 
-An autonomous AI agent that integrates with Slack and GitHub to execute software development tasks end-to-end. Mention it on a GitHub issue and it will discuss the problem, write code, and open a pull request. Tag it in Slack and it will answer questions or kick off tasks.
+An autonomous AI agent that executes software development tasks end-to-end through pluggable channel adapters. Ships with GitHub and Slack support — mention it on a GitHub issue and it will discuss the problem, write code, and open a pull request; tag it in Slack and it will answer questions or kick off tasks. New channels can be added by implementing the `adapter.Adapter` interface.
 
 ## Architecture
 
 ```
-Slack / GitHub
+Channel (Slack, GitHub, ...)
       |
   Channel Adapters ── normalize events
       |
@@ -21,7 +21,7 @@ Slack / GitHub
   └───────────────┘     └────────────┘
 ```
 
-- **Channel adapters** receive events from Slack (Socket Mode) and GitHub (App webhooks) and normalize them into a common `IncomingEvent` format.
+- **Channel adapters** receive events from external channels and normalize them into a common `IncomingEvent` format. The `adapter.Adapter` interface is pluggable — currently ships with GitHub (App webhooks) and Slack (Socket Mode).
 - **Event router** maps events to conversation threads stored in PostgreSQL and enqueues tasks.
 - **Worker pool** runs configurable goroutines that claim pending tasks from the database.
 - **Intent classifier** uses the LLM to categorize each task as a code task, question, discussion, or review.

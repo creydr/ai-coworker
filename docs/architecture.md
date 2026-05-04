@@ -1,11 +1,11 @@
 # Architecture
 
-AI Coworker is an event-driven Go service with a thread-based conversation model and a persistent task queue. Channel adapters normalize incoming events from Slack and GitHub, a worker pool processes them using LLM-based intent classification, and executors (Claude Code in sandboxed containers or direct LLM calls) handle the actual work.
+AI Coworker is an event-driven Go service with a thread-based conversation model and a persistent task queue. Pluggable channel adapters normalize incoming events into a common format (currently GitHub and Slack, extensible via the `adapter.Adapter` interface), a worker pool processes them using LLM-based intent classification, and executors (Claude Code in sandboxed containers or direct LLM calls) handle the actual work.
 
 ## Event Flow
 
 ```
-Slack / GitHub
+Channel (Slack, GitHub, ...)
       |
   Channel Adapters ── normalize events into IncomingEvent
       |
