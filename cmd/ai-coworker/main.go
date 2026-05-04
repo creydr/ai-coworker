@@ -45,7 +45,7 @@ func main() {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
 	}
-	defer func() { _ = db.Close() }()
+	defer db.Close()
 
 	if err := db.Migrate(ctx); err != nil {
 		slog.Error("failed to run migrations", "error", err)

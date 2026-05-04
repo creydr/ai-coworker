@@ -16,6 +16,13 @@ linters:
     - unparam
     - gocritic
 
+  exclusions:
+    rules:
+      # ignore errcheck in defer
+      - linters:
+          - errcheck
+        source: "^\\s*defer\\s+"
+
   settings:
     gocritic:
       disabled-checks:

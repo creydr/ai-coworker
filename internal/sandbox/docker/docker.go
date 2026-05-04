@@ -75,7 +75,7 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 	if err != nil {
 		return nil, fmt.Errorf("failed to create prompt file: %w", err)
 	}
-	defer func() { _ = os.Remove(promptFile.Name()) }()
+	defer os.Remove(promptFile.Name())
 	if _, err := promptFile.WriteString(req.Prompt); err != nil {
 		_ = promptFile.Close()
 		return nil, fmt.Errorf("failed to write prompt file: %w", err)
@@ -136,7 +136,7 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 	if err != nil {
 		return nil, fmt.Errorf("failed to read container logs: %w", err)
 	}
-	defer func() { _ = logReader.Close() }()
+	defer logReader.Close()
 
 	var stdout, stderr bytes.Buffer
 	if _, err := stdcopy.StdCopy(&stdout, &stderr, logReader); err != nil {

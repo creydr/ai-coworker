@@ -57,7 +57,7 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 				continue
 			}
 
-			_ = a.socketClient.Ack(*evt.Request)
+			a.socketClient.Ack(*evt.Request) //nolint:errcheck // best-effort ack
 
 			if eventsAPIEvent.InnerEvent.Type != string(slackevents.AppMention) {
 				continue

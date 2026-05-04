@@ -192,7 +192,7 @@ func TestHandleIssueComment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sending request: %v", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 OK, got %d", resp.StatusCode)
@@ -276,7 +276,7 @@ func TestWebhookInvalidSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sending request: %v", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", resp.StatusCode)
