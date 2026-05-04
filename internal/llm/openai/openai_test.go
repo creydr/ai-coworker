@@ -20,6 +20,19 @@ func TestConvertMessages(t *testing.T) {
 	}
 }
 
+func TestConvertMessagesWithSystemRole(t *testing.T) {
+	messages := []llm.Message{
+		{Role: domain.RoleSystem, Content: "You are a helpful assistant."},
+		{Role: domain.RoleUser, Content: "hello"},
+		{Role: domain.RoleAssistant, Content: "hi there"},
+	}
+
+	params := convertMessages(messages)
+	if len(params) != 3 {
+		t.Fatalf("expected 3 params, got %d", len(params))
+	}
+}
+
 func TestNew(t *testing.T) {
 	p := New("https://example.com/v1", "test-key", "test-model")
 	if p.model != "test-model" {
