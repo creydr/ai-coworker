@@ -70,11 +70,13 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("loading config from %s: %w", path, err)
 	}
 
-	k.Load(env.Provider("AI_COWORKER__", ".", func(s string) string {
+	if err := k.Load(env.Provider("AI_COWORKER__", ".", func(s string) string {
 		key := strings.TrimPrefix(s, "AI_COWORKER__")
 		key = strings.ToLower(strings.ReplaceAll(key, "__", "."))
 		return key
-	}), nil)
+	}), nil); err != nil {
+		return nil, fmt.Errorf("loading env config: %w", err)
+	}
 
 	cfg := &Config{}
 	if err := k.Unmarshal("", cfg); err != nil {
@@ -92,5 +94,55 @@ func Load(path string) (*Config, error) {
 		cfg.LLM.Vertex.Region = "global"
 	}
 
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
+}
+
+func (c *Config) validate() error {
+	if c.Database.URL == "" {
+		return fmt.Errorf("database.url is required")
+	}
+	if c.LLM.Provider == "" {
+		return fmt.Errorf("llm.provider is required")
+	}
+	if c.LLM.Model == "" {
+		return fmt.Errorf("llm.model is required")
+	}
+	switch c.LLM.Provider {
+	case "claude":
+		if c.LLM.APIKey == "" {
+			return fmt.Errorf("llm.api_key is required for claude provider")
+		}
+	case "vertex":
+		if c.LLM.Vertex.ProjectID == "" {
+			return fmt.Errorf("llm.vertex.project_id is required for vertex provider")
+		}
+	case "openai":
+		if c.LLM.OpenAI.BaseURL == "" {
+			return fmt.Errorf("llm.openai.base_url is required for openai provider")
+		}
+	}
+	if c.GitHub.Enabled {
+		if c.GitHub.AppID == 0 {
+			return fmt.Errorf("github.app_id is required when github is enabled")
+		}
+		if c.GitHub.PrivateKey == "" {
+			return fmt.Errorf("github.private_key is required when github is enabled")
+		}
+		if c.GitHub.WebhookSecret == "" {
+			return fmt.Errorf("github.webhook_secret is required when github is enabled")
+		}
+	}
+	if c.Slack.Enabled {
+		if c.Slack.AppToken == "" {
+			return fmt.Errorf("slack.app_token is required when slack is enabled")
+		}
+		if c.Slack.BotToken == "" {
+			return fmt.Errorf("slack.bot_token is required when slack is enabled")
+		}
+	}
+	return nil
 }
