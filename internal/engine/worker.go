@@ -12,6 +12,13 @@ import (
 	"github.com/creydr/ai-coworker/internal/store"
 )
 
+const (
+	// errBackoff is the duration to wait before retrying after a claim error.
+	errBackoff = 5 * time.Second
+	// pollInterval is the duration to wait between polling for new tasks.
+	pollInterval = 1 * time.Second
+)
+
 // WorkerPool manages a pool of goroutines that claim and process tasks.
 type WorkerPool struct {
 	store      store.Store
@@ -71,11 +78,11 @@ func (wp *WorkerPool) runWorker(ctx context.Context, workerID string) {
 		task, err := wp.store.ClaimNextTask(ctx, workerID)
 		if err != nil {
 			slog.Error("error claiming task", "worker", workerID, "error", err)
-			time.Sleep(5 * time.Second)
+			time.Sleep(errBackoff)
 			continue
 		}
 		if task == nil {
-			time.Sleep(1 * time.Second)
+			time.Sleep(pollInterval)
 			continue
 		}
 
