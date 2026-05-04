@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/creydr/ai-coworker/internal/llm"
 	oai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -49,9 +50,9 @@ func convertMessages(messages []llm.Message) []oai.ChatCompletionMessageParamUni
 	params := make([]oai.ChatCompletionMessageParamUnion, 0, len(messages))
 	for _, msg := range messages {
 		switch msg.Role {
-		case llm.RoleUser:
+		case domain.RoleUser:
 			params = append(params, oai.UserMessage(msg.Content))
-		case llm.RoleAssistant:
+		case domain.RoleAssistant:
 			params = append(params, oai.AssistantMessage(msg.Content))
 		}
 	}

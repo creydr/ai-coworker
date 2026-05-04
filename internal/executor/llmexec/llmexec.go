@@ -23,24 +23,20 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 	var messages []llm.Message
 
 	messages = append(messages, llm.Message{
-		Role:    llm.RoleUser,
+		Role:    domain.RoleUser,
 		Content: "You are a helpful AI coworker. Assist with questions, discussions, and reviews related to software development. Be concise and helpful.",
 	})
 
 	for _, msg := range execCtx.Messages {
-		role := llm.RoleUser
-		if msg.Role == domain.RoleAssistant {
-			role = llm.RoleAssistant
-		}
 		messages = append(messages, llm.Message{
-			Role:    role,
+			Role:    msg.Role,
 			Content: msg.Content,
 		})
 	}
 
 	if execCtx.Task != nil && execCtx.Task.Input != "" {
 		messages = append(messages, llm.Message{
-			Role:    llm.RoleUser,
+			Role:    domain.RoleUser,
 			Content: execCtx.Task.Input,
 		})
 	}

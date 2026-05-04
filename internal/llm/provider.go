@@ -1,16 +1,13 @@
 package llm
 
-import "context"
+import (
+	"context"
 
-type Role string
-
-const (
-	RoleUser      Role = "user"
-	RoleAssistant Role = "assistant"
+	"github.com/creydr/ai-coworker/internal/domain"
 )
 
 type Message struct {
-	Role    Role
+	Role    domain.Role
 	Content string
 }
 
