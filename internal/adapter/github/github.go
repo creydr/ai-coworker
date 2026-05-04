@@ -162,10 +162,11 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 	incoming := domain.IncomingEvent{
 		Channel: "github",
 		ChannelRef: domain.ChannelRef{
-			Channel:   "github",
-			Repo:      repoFullName,
-			IssueNum:  issueNum,
-			CommentID: e.GetComment().GetID(),
+			Channel:     "github",
+			Repo:        repoFullName,
+			IssueNum:    issueNum,
+			CommentID:   e.GetComment().GetID(),
+			CommentType: "issue_comment",
 		},
 		ThreadID: fmt.Sprintf("github-%s-%d", repoFullName, issueNum),
 		UserID:   e.GetComment().GetUser().GetLogin(),
@@ -187,26 +188,37 @@ func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestRe
 		return nil
 	}
 
+	body := e.GetComment().GetBody()
+	mention := "@" + a.botUsername
+	if !strings.Contains(body, mention) {
+		return nil
+	}
+
+	content := strings.TrimSpace(strings.ReplaceAll(body, mention, ""))
+
 	repoFullName := e.GetRepo().GetFullName()
 	prNum := e.GetPullRequest().GetNumber()
 
 	incoming := domain.IncomingEvent{
 		Channel: "github",
 		ChannelRef: domain.ChannelRef{
-			Channel:   "github",
-			Repo:      repoFullName,
-			IssueNum:  prNum,
-			CommentID: e.GetComment().GetID(),
+			Channel:     "github",
+			Repo:        repoFullName,
+			IssueNum:    prNum,
+			CommentID:   e.GetComment().GetID(),
+			CommentType: "review_comment",
 		},
 		ThreadID: fmt.Sprintf("github-%s-%d", repoFullName, prNum),
 		UserID:   e.GetComment().GetUser().GetLogin(),
-		Content:  e.GetComment().GetBody(),
+		Content:  content,
 		Metadata: map[string]string{
 			"type":            "review_comment",
 			"repo":            repoFullName,
 			"issue_num":       strconv.Itoa(prNum),
 			"is_pr":           "true",
+			"pr_branch":       e.GetPullRequest().GetHead().GetRef(),
 			"path":            e.GetComment().GetPath(),
+			"comment_id":      strconv.FormatInt(e.GetComment().GetID(), 10),
 			"installation_id": strconv.FormatInt(installationID, 10),
 		},
 	}
@@ -218,6 +230,14 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 	if e.GetAction() != "submitted" {
 		return nil
 	}
+
+	body := e.GetReview().GetBody()
+	mention := "@" + a.botUsername
+	if !strings.Contains(body, mention) {
+		return nil
+	}
+
+	content := strings.TrimSpace(strings.ReplaceAll(body, mention, ""))
 
 	repoFullName := e.GetRepo().GetFullName()
 	prNum := e.GetPullRequest().GetNumber()
@@ -231,12 +251,13 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 		},
 		ThreadID: fmt.Sprintf("github-%s-%d", repoFullName, prNum),
 		UserID:   e.GetReview().GetUser().GetLogin(),
-		Content:  e.GetReview().GetBody(),
+		Content:  content,
 		Metadata: map[string]string{
 			"type":            "review",
 			"repo":            repoFullName,
 			"issue_num":       strconv.Itoa(prNum),
 			"is_pr":           "true",
+			"pr_branch":       e.GetPullRequest().GetHead().GetRef(),
 			"review_state":    e.GetReview().GetState(),
 			"installation_id": strconv.FormatInt(installationID, 10),
 		},
@@ -256,10 +277,17 @@ func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, messa
 		return err
 	}
 
+	if ref.CommentType == "review_comment" && ref.CommentID != 0 {
+		_, _, err = client.PullRequests.CreateCommentInReplyTo(ctx, owner, repo, ref.IssueNum, message, ref.CommentID)
+		if err != nil {
+			return fmt.Errorf("failed to reply to review comment: %w", err)
+		}
+		return nil
+	}
+
 	comment := &gh.IssueComment{
 		Body: gh.Ptr(message),
 	}
-
 	_, _, err = client.Issues.CreateComment(ctx, owner, repo, ref.IssueNum, comment)
 	if err != nil {
 		return fmt.Errorf("failed to create issue comment: %w", err)
@@ -269,6 +297,10 @@ func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, messa
 }
 
 func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error {
+	if ref.CommentID == 0 {
+		return nil
+	}
+
 	owner, repo, err := splitRepo(ref.Repo)
 	if err != nil {
 		return err
@@ -279,7 +311,12 @@ func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error 
 		return err
 	}
 
-	_, _, err = client.Reactions.CreateIssueCommentReaction(ctx, owner, repo, ref.CommentID, "eyes")
+	switch ref.CommentType {
+	case "review_comment":
+		_, _, err = client.Reactions.CreatePullRequestCommentReaction(ctx, owner, repo, ref.CommentID, "eyes")
+	default:
+		_, _, err = client.Reactions.CreateIssueCommentReaction(ctx, owner, repo, ref.CommentID, "eyes")
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create reaction: %w", err)
 	}
@@ -288,9 +325,9 @@ func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error 
 }
 
 func (a *Adapter) CreateInstallationToken(ctx context.Context, installationID int64) (string, error) {
-	client := a.getInstallationClient(installationID)
+	appClient := gh.NewClient(&http.Client{Transport: a.appsTransport})
 
-	token, _, err := client.Apps.CreateInstallationToken(ctx, installationID, nil)
+	token, _, err := appClient.Apps.CreateInstallationToken(ctx, installationID, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create installation token: %w", err)
 	}

@@ -10,10 +10,11 @@ type IncomingEvent struct {
 }
 
 type ChannelRef struct {
-	Channel   string
-	ChannelID string
-	ThreadTS  string
-	Repo      string
-	IssueNum  int
-	CommentID int64
+	Channel     string
+	ChannelID   string
+	ThreadTS    string
+	Repo        string
+	IssueNum    int
+	CommentID   int64
+	CommentType string // "issue_comment", "review_comment", or "review"
 }
