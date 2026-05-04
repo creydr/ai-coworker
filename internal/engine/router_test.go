@@ -136,7 +136,6 @@ func TestRouter_HandleEvent_PassesMetadata(t *testing.T) {
 	r.RegisterAdapter(adapter)
 
 	event := domain.IncomingEvent{
-		Channel: "github",
 		ChannelRef: domain.ChannelRef{
 			Channel:   "github",
 			ThreadKey: "org/repo#42",
@@ -187,7 +186,6 @@ func TestRouter_HandleEvent_NilMetadata(t *testing.T) {
 	r := NewRouter(ms)
 
 	event := domain.IncomingEvent{
-		Channel: "slack",
 		ChannelRef: domain.ChannelRef{
 			Channel:   "slack",
 			ThreadKey: "C123/1234.5678",
@@ -220,7 +218,6 @@ func TestRouter_HandleEvent_Acknowledge(t *testing.T) {
 	r.RegisterAdapter(a)
 
 	event := domain.IncomingEvent{
-		Channel: "github",
 		ChannelRef: domain.ChannelRef{
 			Channel:   "github",
 			ThreadKey: "org/repo#1",
@@ -266,7 +263,6 @@ func TestRouter_HandleEvent_ExistingThread(t *testing.T) {
 	r := NewRouter(ms)
 
 	event := domain.IncomingEvent{
-		Channel: "slack",
 		ChannelRef: domain.ChannelRef{
 			Channel:   "slack",
 			ThreadKey: "C123/1234.5678",

@@ -1,7 +1,6 @@
 package domain
 
 type IncomingEvent struct {
-	Channel    string
 	ChannelRef ChannelRef
 	ThreadID   string
 	UserID     string

@@ -162,7 +162,6 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 	ref := WithComment(NewRef(repoFullName, issueNum), e.GetComment().GetID(), "issue_comment")
 
 	incoming := domain.IncomingEvent{
-		Channel:    "github",
 		ChannelRef: ref,
 		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, issueNum),
 		UserID:     e.GetComment().GetUser().GetLogin(),
@@ -198,7 +197,6 @@ func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestRe
 	ref := WithComment(NewRef(repoFullName, prNum), e.GetComment().GetID(), "review_comment")
 
 	incoming := domain.IncomingEvent{
-		Channel:    "github",
 		ChannelRef: ref,
 		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, prNum),
 		UserID:     e.GetComment().GetUser().GetLogin(),
@@ -235,7 +233,6 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 	prNum := e.GetPullRequest().GetNumber()
 
 	incoming := domain.IncomingEvent{
-		Channel:    "github",
 		ChannelRef: NewRef(repoFullName, prNum),
 		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, prNum),
 		UserID:     e.GetReview().GetUser().GetLogin(),

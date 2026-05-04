@@ -98,7 +98,6 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 	}
 
 	event := domain.IncomingEvent{
-		Channel:    thread.ChannelRef.Channel,
 		ChannelRef: thread.ChannelRef,
 		ThreadID:   thread.ID,
 		Content:    task.Input,

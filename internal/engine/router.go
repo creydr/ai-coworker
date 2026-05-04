@@ -40,9 +40,9 @@ func (r *Router) GetAdapter(name string) adapter.Adapter {
 // thread exists, records the user message, and creates a pending task.
 func (r *Router) HandleEvent(ctx context.Context, event domain.IncomingEvent) error {
 	// Acknowledge the event if an adapter is available.
-	if a := r.adapters[event.Channel]; a != nil {
+	if a := r.adapters[event.ChannelRef.Channel]; a != nil {
 		if err := a.Acknowledge(ctx, event.ChannelRef); err != nil {
-			slog.Warn("failed to acknowledge event", "channel", event.Channel, "error", err)
+			slog.Warn("failed to acknowledge event", "channel", event.ChannelRef.Channel, "error", err)
 		}
 	}
 
