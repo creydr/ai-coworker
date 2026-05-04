@@ -7,6 +7,7 @@ import (
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/vertex"
+
 	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/creydr/ai-coworker/internal/llm"
 )
@@ -47,7 +48,7 @@ func (p *Provider) Chat(ctx context.Context, messages []llm.Message) (string, er
 
 	params := anthropic.MessageNewParams{
 		MaxTokens: defaultMaxTokens,
-		Model:     anthropic.Model(p.model),
+		Model:     p.model,
 		Messages:  chatMessages,
 	}
 	if len(systemBlocks) > 0 {

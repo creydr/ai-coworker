@@ -192,7 +192,7 @@ func TestHandleIssueComment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sending request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 OK, got %d", resp.StatusCode)
@@ -276,7 +276,7 @@ func TestWebhookInvalidSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sending request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", resp.StatusCode)
@@ -322,7 +322,7 @@ func TestHandleIssueComment_CommentType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sending request: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if captured.ChannelRef.Properties["comment_type"] != "issue_comment" {
 		t.Errorf("Properties[comment_type] = %q, want %q", captured.ChannelRef.Properties["comment_type"], "issue_comment")
@@ -439,7 +439,7 @@ func TestHandlePRReviewComment_WithMention(t *testing.T) {
 
 	payload := prReviewCommentPayload(t, "@ai-coworker add error handling here", "org/repo", "reviewer", 5, 88888, 77777, "main.go", "feat/branch")
 	resp := sendWebhook(t, ts, "pull_request_review_comment", payload, secret)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -488,7 +488,7 @@ func TestHandlePRReviewComment_WithoutMention(t *testing.T) {
 
 	payload := prReviewCommentPayload(t, "this looks wrong", "org/repo", "reviewer", 5, 88888, 77777, "main.go", "feat/branch")
 	resp := sendWebhook(t, ts, "pull_request_review_comment", payload, "secret")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if handlerCalled {
 		t.Fatal("handler should not be called when bot is not mentioned")
@@ -516,7 +516,7 @@ func TestHandlePRReview_WithMention(t *testing.T) {
 
 	payload := prReviewPayload(t, "@ai-coworker please fix these issues", "org/repo", "reviewer", 3, 77777, "feat/fix", "changes_requested")
 	resp := sendWebhook(t, ts, "pull_request_review", payload, secret)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if !handlerCalled {
 		t.Fatal("handler was not called")
@@ -556,7 +556,7 @@ func TestHandlePRReview_WithoutMention(t *testing.T) {
 
 	payload := prReviewPayload(t, "LGTM", "org/repo", "reviewer", 3, 77777, "feat/fix", "approved")
 	resp := sendWebhook(t, ts, "pull_request_review", payload, "secret")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if handlerCalled {
 		t.Fatal("handler should not be called when bot is not mentioned")

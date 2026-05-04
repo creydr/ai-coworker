@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/creydr/ai-coworker/internal/domain"
-	"github.com/creydr/ai-coworker/internal/llm"
 	oai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+
+	"github.com/creydr/ai-coworker/internal/domain"
+	"github.com/creydr/ai-coworker/internal/llm"
 )
 
 // Provider implements the LLM provider interface using an OpenAI-compatible API

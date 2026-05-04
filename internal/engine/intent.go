@@ -42,12 +42,12 @@ func (c *IntentClassifier) Classify(ctx context.Context, event domain.IncomingEv
 	if len(history) > 0 {
 		sb.WriteString("Conversation history:\n")
 		for _, msg := range history {
-			sb.WriteString(fmt.Sprintf("[%s]: %s\n", msg.Role, msg.Content))
+			fmt.Fprintf(&sb, "[%s]: %s\n", msg.Role, msg.Content)
 		}
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("Latest message: %s\n\n", event.Content))
+	fmt.Fprintf(&sb, "Latest message: %s\n\n", event.Content)
 	sb.WriteString("Respond with exactly one word: code_task, review, question, or discussion.")
 
 	messages := []llm.Message{

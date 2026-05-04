@@ -117,14 +117,14 @@ func buildPrompt(execCtx *executor.Context) string {
 	isPR := false
 	if execCtx.Event != nil && execCtx.Event.Metadata != nil {
 		if repo, ok := execCtx.Event.Metadata["repo"]; ok {
-			sb.WriteString(fmt.Sprintf("Repository: %s\n", repo))
+			fmt.Fprintf(&sb, "Repository: %s\n", repo)
 		}
 		if num, ok := execCtx.Event.Metadata["issue_num"]; ok {
 			if execCtx.Event.Metadata["is_pr"] == "true" {
-				sb.WriteString(fmt.Sprintf("Pull Request: #%s\n", num))
+				fmt.Fprintf(&sb, "Pull Request: #%s\n", num)
 				isPR = true
 			} else {
-				sb.WriteString(fmt.Sprintf("Issue: #%s\n", num))
+				fmt.Fprintf(&sb, "Issue: #%s\n", num)
 			}
 		}
 		sb.WriteString("\n")
@@ -137,13 +137,13 @@ func buildPrompt(execCtx *executor.Context) string {
 			if msg.Role == domain.RoleAssistant {
 				role = "Assistant"
 			}
-			sb.WriteString(fmt.Sprintf("%s: %s\n", role, msg.Content))
+			fmt.Fprintf(&sb, "%s: %s\n", role, msg.Content)
 		}
 		sb.WriteString("\n")
 	}
 
 	if execCtx.Task != nil && execCtx.Task.Input != "" {
-		sb.WriteString(fmt.Sprintf("Latest request: %s\n\n", execCtx.Task.Input))
+		fmt.Fprintf(&sb, "Latest request: %s\n\n", execCtx.Task.Input)
 	}
 
 	if isPR {

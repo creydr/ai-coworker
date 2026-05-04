@@ -39,7 +39,7 @@ func newTestContext() *executor.Context {
 		},
 		Event: &domain.IncomingEvent{
 			Metadata: map[string]string{
-				"repo":  "octocat/hello-world",
+				"repo":      "octocat/hello-world",
 				"issue_num": "42",
 			},
 		},
@@ -258,7 +258,7 @@ func TestBuildPrompt(t *testing.T) {
 				Task: &domain.Task{Input: "Implement feature X"},
 				Event: &domain.IncomingEvent{
 					Metadata: map[string]string{
-						"repo":  "org/repo",
+						"repo":      "org/repo",
 						"issue_num": "99",
 					},
 				},
