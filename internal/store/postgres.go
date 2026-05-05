@@ -250,6 +250,26 @@ func (s *PostgresStore) CreateMessage(ctx context.Context, m *domain.Message) er
 
 // ---------- tasks ----------
 
+const taskColumns = `id, thread_id, intent, status, input, result, worker_id, metadata, created_at, updated_at`
+
+func scanTask(row scannable) (*domain.Task, error) {
+	var t domain.Task
+	var metadataJSON []byte
+	err := row.Scan(
+		&t.ID, &t.ThreadID, &t.Intent, &t.Status,
+		&t.Input, &t.Result, &t.WorkerID, &metadataJSON,
+		&t.CreatedAt, &t.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	t.Metadata, err = decodeMetadata(metadataJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decoding task metadata: %w", err)
+	}
+	return &t, nil
+}
+
 func (s *PostgresStore) CreateTask(ctx context.Context, t *domain.Task) error {
 	t.ID = uuid.New().String()
 	now := time.Now().UTC()
@@ -282,27 +302,47 @@ func (s *PostgresStore) ClaimNextTask(ctx context.Context, workerID string) (*do
 		     LIMIT 1
 		     FOR UPDATE SKIP LOCKED
 		 )
-		 RETURNING id, thread_id, intent, status, input, result, worker_id, metadata, created_at, updated_at`,
+		 RETURNING `+taskColumns,
 		workerID, time.Now().UTC())
 
-	var t domain.Task
-	var metadataJSON []byte
-	err := row.Scan(
-		&t.ID, &t.ThreadID, &t.Intent, &t.Status,
-		&t.Input, &t.Result, &t.WorkerID, &metadataJSON,
-		&t.CreatedAt, &t.UpdatedAt,
-	)
+	t, err := scanTask(row)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("claiming task: %w", err)
 	}
-	t.Metadata, err = decodeMetadata(metadataJSON)
+	return t, nil
+}
+
+func (s *PostgresStore) ClaimPendingTasks(ctx context.Context, threadID, workerID string) ([]*domain.Task, error) {
+	now := time.Now().UTC()
+	rows, err := s.pool.Query(ctx,
+		`UPDATE tasks
+		 SET status = 'in_progress', worker_id = $1, updated_at = $2
+		 WHERE id IN (
+		     SELECT id FROM tasks
+		     WHERE thread_id = $3
+		       AND status = 'pending'
+		     ORDER BY created_at
+		     FOR UPDATE SKIP LOCKED
+		 )
+		 RETURNING `+taskColumns,
+		workerID, now, threadID)
 	if err != nil {
-		return nil, fmt.Errorf("decoding task metadata: %w", err)
+		return nil, fmt.Errorf("claiming pending tasks: %w", err)
 	}
-	return &t, nil
+	defer rows.Close()
+
+	var tasks []*domain.Task
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning claimed task: %w", err)
+		}
+		tasks = append(tasks, t)
+	}
+	return tasks, rows.Err()
 }
 
 func (s *PostgresStore) UpdateTask(ctx context.Context, t *domain.Task) error {

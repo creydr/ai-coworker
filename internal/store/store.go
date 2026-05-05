@@ -36,6 +36,10 @@ type Store interface {
 	// ClaimNextTask atomically picks the oldest pending task and assigns it to workerID.
 	ClaimNextTask(ctx context.Context, workerID string) (*domain.Task, error)
 
+	// ClaimPendingTasks atomically claims all pending tasks for the given thread
+	// and assigns them to workerID.
+	ClaimPendingTasks(ctx context.Context, threadID, workerID string) ([]*domain.Task, error)
+
 	// UpdateTask saves changes to an existing task.
 	UpdateTask(ctx context.Context, t *domain.Task) error
 

@@ -209,6 +209,7 @@ func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestRe
 			"pr_branch":       e.GetPullRequest().GetHead().GetRef(),
 			"path":            e.GetComment().GetPath(),
 			"comment_id":      strconv.FormatInt(e.GetComment().GetID(), 10),
+			"review_id":       strconv.FormatInt(e.GetComment().GetPullRequestReviewID(), 10),
 			"installation_id": strconv.FormatInt(installationID, 10),
 		},
 	}
@@ -244,6 +245,7 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 			"is_pr":           "true",
 			"pr_branch":       e.GetPullRequest().GetHead().GetRef(),
 			"review_state":    e.GetReview().GetState(),
+			"review_id":       strconv.FormatInt(e.GetReview().GetID(), 10),
 			"installation_id": strconv.FormatInt(installationID, 10),
 		},
 	}
