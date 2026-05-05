@@ -8,7 +8,7 @@ build:
 	go build -o ai-coworker ./cmd/ai-coworker/
 
 run: build
-	./ai-coworker
+	./ai-coworker $(ARGS)
 
 test:
 	go test ./...
