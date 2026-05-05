@@ -55,7 +55,13 @@ To use the GitHub handler, you'll need a [GitHub App](#github-app-setup). For th
    export AI_COWORKER__GITHUB__PRIVATE_KEY="$(cat path/to/private-key.pem)"
    export AI_COWORKER__GITHUB__WEBHOOK_SECRET=<your-webhook-secret>
    export AI_COWORKER__GITHUB__BOT_USERNAME=<your-app-name>
+   export AI_COWORKER__GITHUB__ALLOWED_USERS=user1,user2
    ```
+
+   `ALLOWED_USERS` controls which GitHub users can trigger the bot:
+   - **Comma-separated list** (e.g. `user1,user2`): only those users can interact with the bot
+   - **`*`**: all users are allowed
+   - **Empty / unset**: nobody is allowed (secure by default)
 
 The webhook server listens on port 8080. For local development, use a tool like [smee.io](https://smee.io) or [ngrok](https://ngrok.com) to expose it.
 

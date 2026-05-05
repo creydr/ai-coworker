@@ -82,6 +82,7 @@ Secrets and deployment-specific values must be set via environment variables:
 | `AI_COWORKER__GITHUB__PRIVATE_KEY` | GitHub App private key (PEM contents) |
 | `AI_COWORKER__GITHUB__WEBHOOK_SECRET` | GitHub webhook secret |
 | `AI_COWORKER__GITHUB__BOT_USERNAME` | GitHub App bot username (e.g. `creydr-ai`) |
+| `AI_COWORKER__GITHUB__ALLOWED_USERS` | Comma-separated list of GitHub usernames allowed to trigger the bot. Use `*` to allow all users. Empty/unset = nobody allowed (secure by default) |
 | `AI_COWORKER__SLACK__ENABLED` | Set to `true` to enable the Slack adapter |
 | `AI_COWORKER__SLACK__APP_TOKEN` | Slack app-level token (`xapp-...`) |
 | `AI_COWORKER__SLACK__BOT_TOKEN` | Slack bot token (`xoxb-...`) |
