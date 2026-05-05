@@ -162,7 +162,7 @@ For end-to-end testing on Kubernetes, use the `hack/kind.sh` script to spin up a
 
 - [KinD](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) (`kind`)
 - [smee-client](https://github.com/probot/smee-client) (`npm install -g smee-client`)
-- Google Cloud ADC configured (`gcloud auth application-default login`) if using Vertex AI
+- Google Cloud ADC configured if using Vertex AI — run `gcloud auth application-default login`, which writes credentials to `~/.config/gcloud/application_default_credentials.json`. The deploy script auto-detects this file and mounts it into the pod.
 
 ### Workflow
 
