@@ -172,7 +172,7 @@ kubectl apply -k deploy/kubernetes/base/
 
 **Option B: Deploy PostgreSQL alongside the service**
 
-An overlay at `deploy/kubernetes/overlays/with-postgres/` adds a PostgreSQL 16 StatefulSet with a 1Gi PersistentVolumeClaim. The default ConfigMap already points to this instance. This is suitable for development and testing — for production, use a managed database or operator.
+An overlay at `deploy/kubernetes/overlays/with-postgres/` adds a PostgreSQL 16 Deployment using the `postgres` component. The default ConfigMap already points to this instance. This is suitable for development and testing — for production, use a managed database or operator.
 
 ```sh
 # Edit the secret with your API keys
@@ -181,6 +181,15 @@ vi deploy/kubernetes/base/secret.yaml
 # Apply with the PostgreSQL overlay
 kubectl apply -k deploy/kubernetes/overlays/with-postgres/
 ```
+
+The manifests use [Kustomize components](https://kubectl.docs.kubernetes.io/guides/config_management/components/) for composability:
+
+| Component | Description |
+|-----------|-------------|
+| `components/postgres` | PostgreSQL Deployment with emptyDir storage |
+| `components/google-adc` | Google ADC volume mount for Vertex AI authentication |
+
+Compose what you need in your own overlay — see `overlays/kind/` for an example that combines both.
 
 The Deployment mounts `config.yaml` from a ConfigMap and injects secrets as environment variables. The sandbox runtime is pre-configured to `kubernetes` with Jobs created in the `ai-coworker` namespace.
 
@@ -191,6 +200,28 @@ cd deploy/kubernetes/base && kustomize edit set image quay.io/creydr/ai-coworker
 ```
 
 For GitHub webhook delivery, expose the Service via an Ingress or LoadBalancer pointing to port 8080.
+
+### 6. Local E2E testing with KinD (optional)
+
+A `hack/kind.sh` script automates local end-to-end testing on a [KinD](https://kind.sigs.k8s.io/) cluster. It deploys the full stack (service + PostgreSQL + Google ADC) and uses [smee](https://smee.io) to forward GitHub webhooks.
+
+```sh
+make kind-create                          # Create KinD cluster
+make kind-load                            # Build images and load into cluster
+AI_COWORKER__LLM__PROVIDER=vertex \
+AI_COWORKER__LLM__VERTEX__PROJECT_ID=... \
+AI_COWORKER__LLM__MODEL=claude-sonnet-4-6 \
+AI_COWORKER__GITHUB__ENABLED=true \
+AI_COWORKER__GITHUB__APP_ID=... \
+AI_COWORKER__GITHUB__PRIVATE_KEY="$(cat key.pem)" \
+AI_COWORKER__GITHUB__WEBHOOK_SECRET="$(cat secret)" \
+AI_COWORKER__GITHUB__BOT_USERNAME=my-bot \
+  make kind-deploy                        # Deploy and inject secrets from env vars
+SMEE_URL=https://smee.io/... make kind-smee  # Forward GitHub webhooks
+make kind-delete                          # Tear down
+```
+
+Commands can also be combined via the script directly: `./hack/kind.sh --create --load --deploy`.
 
 ## GitHub App Setup
 
@@ -269,23 +300,14 @@ Responses are threaded automatically.
 
 ## Development
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, testing, GitHub App configuration, and the full Makefile reference.
+
 ```sh
+make dev-db         # Start PostgreSQL
 make build          # Build the binary
 make test           # Run unit tests
-make lint           # Run go vet
-make dev-db         # Start PostgreSQL
-make sandbox-image  # Build sandbox Docker image
-make docker         # Build the service Docker image
-```
-
-### Running integration tests
-
-Integration tests require a running PostgreSQL instance and use the `integration` build tag:
-
-```sh
-make dev-db
-TEST_DATABASE_URL="postgres://ai-coworker:password@localhost:5432/ai-coworker?sslmode=disable" \
-  go test -tags integration ./...
+make lint           # Run golangci-lint
+make kind-create    # Create a KinD cluster for local e2e testing
 ```
 
 ## Project Structure
@@ -314,5 +336,10 @@ internal/
 sandbox/                  Dockerfile and entrypoint for sandbox image
 deploy/kubernetes/        Kustomize manifests for Kubernetes deployment
   base/                   Base manifests (Deployment, Service, RBAC, config)
-  overlays/with-postgres/ Optional overlay that includes PostgreSQL
+  components/postgres/    Kustomize component: PostgreSQL Deployment
+  components/google-adc/  Kustomize component: Google ADC for Vertex AI
+  overlays/with-postgres/ Overlay: base + postgres
+  overlays/kind/          Overlay: base + postgres + google-adc (local testing)
+hack/                     Developer scripts
+  kind.sh                 KinD cluster lifecycle for local e2e testing
 ```

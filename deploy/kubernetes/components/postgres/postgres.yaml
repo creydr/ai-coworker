@@ -11,16 +11,14 @@ spec:
     - port: 5432
       targetPort: 5432
       protocol: TCP
-  clusterIP: None
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: postgres
   labels:
     app.kubernetes.io/name: postgres
 spec:
-  serviceName: postgres
   replicas: 1
   selector:
     matchLabels:
@@ -57,11 +55,6 @@ spec:
               command: ["pg_isready", "-U", "ai-coworker"]
             initialDelaySeconds: 5
             periodSeconds: 5
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 1Gi
+      volumes:
+        - name: data
+          emptyDir: {}

@@ -105,29 +105,28 @@ The service's ServiceAccount needs these permissions in the sandbox namespace:
 
 ### Deployment Manifests
 
-Kustomize-based manifests at `deploy/kubernetes/`:
+Kustomize-based manifests at `deploy/kubernetes/`, using [Kustomize components](https://kubectl.docs.kubernetes.io/guides/config_management/components/) for composability:
 
 ```
 deploy/kubernetes/
-  kustomization.yaml     # ties everything together
-  namespace.yaml         # ai-coworker namespace
-  serviceaccount.yaml    # SA for the service
-  role.yaml              # RBAC for sandbox operations
-  rolebinding.yaml       # binds role to SA
-  configmap.yaml         # non-secret config (config.yaml)
-  secret.yaml            # template for API keys
-  deployment.yaml        # service deployment
-  service.yaml           # ClusterIP for webhook delivery
+  base/                            # core manifests
+    kustomization.yaml
+    namespace.yaml
+    serviceaccount.yaml
+    role.yaml / rolebinding.yaml
+    configmap.yaml / secret.yaml
+    deployment.yaml / service.yaml
+  components/
+    postgres/                      # PostgreSQL Deployment + Service
+    google-adc/                    # Google ADC secret + volume mount for Vertex AI
+  overlays/
+    with-postgres/                 # base + postgres (bring-your-own LLM credentials)
+    kind/                          # base + postgres + google-adc (local KinD testing)
 ```
 
-Usage:
+Users compose what they need in their own overlay. The `components/` approach avoids a combinatorial explosion of overlays.
 
-```sh
-# Edit secret.yaml with your API keys
-kubectl apply -k deploy/kubernetes/
-```
-
-The Deployment uses TCP liveness/readiness probes on port 8080. A dedicated health endpoint is a follow-up improvement.
+The Deployment uses a startup probe (65s budget) to allow database connection time, followed by TCP liveness/readiness probes on port 8080. A dedicated health endpoint is a follow-up improvement.
 
 ### Podman Compatibility
 
@@ -148,3 +147,77 @@ Two PRs:
 **PR 2 — Kubernetes Deployment Manifests:**
 1. Create all manifests in `deploy/kubernetes/`
 2. Update README with deployment instructions
+
+**PR 3 — Local KinD E2E Testing:**
+1. Add Makefile targets for KinD lifecycle and testing
+2. Document the testing workflow
+
+## Local Testing with KinD
+
+For end-to-end testing of the Kubernetes deployment, we use [KinD](https://kind.sigs.k8s.io/) (Kubernetes in Docker) to spin up a local cluster.
+
+### What It Tests
+
+- Kustomize manifests apply cleanly (base + components)
+- PostgreSQL starts and becomes ready
+- ai-coworker Deployment starts, connects to PostgreSQL, runs migrations
+- RBAC allows the service to create sandbox Jobs
+- GitHub webhooks reach the service via smee → port-forward
+- Sandbox Jobs execute and produce output
+
+### How It Works
+
+1. **KinD cluster** — a lightweight single-node K8s cluster running in Docker
+2. **Local images** — both `ai-coworker` and `ai-coworker-sandbox` are built locally and loaded into KinD (no registry push needed). Images are tagged with the full `quay.io/creydr/` prefix so the existing kustomization image references work without overrides.
+3. **KinD overlay** — uses `deploy/kubernetes/overlays/kind/` which composes the `postgres` and `google-adc` components
+4. **Secrets** — all `AI_COWORKER__*` env vars are collected into a K8s secret at deploy time (multiline values like PEM keys are preserved via temp files). Google ADC credentials are populated from the local `~/.config/gcloud/application_default_credentials.json`.
+5. **Webhook routing** — `kubectl port-forward` exposes the service on `localhost:8080`, and `smee` proxies GitHub webhooks to it
+
+### hack/kind.sh
+
+A single script (`hack/kind.sh`) handles the full KinD lifecycle. Commands use `--` flags and can be combined — they always execute in the correct lifecycle order regardless of argument order:
+
+```sh
+./hack/kind.sh --create --load --deploy    # runs create, then load, then deploy
+./hack/kind.sh --deploy --create           # same order: create first, then deploy
+```
+
+Makefile targets are thin wrappers around the script.
+
+| Target / Flag | Description |
+|---------------|-------------|
+| `make kind-create` / `--create` | Create a KinD cluster named `ai-coworker` |
+| `make kind-load` / `--load` | Build both images and load them into the KinD cluster |
+| `make kind-deploy` / `--deploy` | Deploy the kind overlay, inject secrets from env vars, wait for rollout |
+| `make kind-smee` / `--smee` | Port-forward the service and start smee for GitHub webhook delivery |
+| `make kind-delete` / `--delete` | Tear down the KinD cluster |
+
+### Environment Variables
+
+All `AI_COWORKER__*` env vars set in your shell are automatically injected into the K8s secret. Common ones:
+
+| Variable | Purpose |
+|----------|---------|
+| `AI_COWORKER__LLM__PROVIDER` | LLM provider (`vertex`, `claude`, `openai`) |
+| `AI_COWORKER__LLM__VERTEX__PROJECT_ID` | Google Cloud project ID (for Vertex AI) |
+| `AI_COWORKER__LLM__API_KEY` | API key (for Claude or OpenAI providers) |
+| `AI_COWORKER__GITHUB__*` | GitHub App credentials (APP_ID, PRIVATE_KEY, WEBHOOK_SECRET, BOT_USERNAME) |
+| `SMEE_URL` | smee.io channel URL (required for `--smee`) |
+
+### Typical Workflow
+
+```sh
+make kind-create                          # create cluster
+make kind-load                            # build & load images
+AI_COWORKER__LLM__PROVIDER=vertex \
+AI_COWORKER__LLM__VERTEX__PROJECT_ID=... \
+AI_COWORKER__GITHUB__ENABLED=true \
+AI_COWORKER__GITHUB__APP_ID=... \
+AI_COWORKER__GITHUB__PRIVATE_KEY="$(cat key.pem)" \
+AI_COWORKER__GITHUB__WEBHOOK_SECRET="$(cat secret)" \
+AI_COWORKER__GITHUB__BOT_USERNAME=my-bot \
+  make kind-deploy                        # deploy + inject secrets
+SMEE_URL=https://smee.io/... make kind-smee  # forward webhooks
+# ... test by commenting on a GitHub issue ...
+make kind-delete                          # tear down
+```

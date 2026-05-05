@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-coworker
+spec:
+  template:
+    spec:
+      containers:
+        - name: ai-coworker
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/google/adc.json
+          volumeMounts:
+            - name: google-adc
+              mountPath: /var/secrets/google
+              readOnly: true
+      volumes:
+        - name: google-adc
+          secret:
+            secretName: google-adc

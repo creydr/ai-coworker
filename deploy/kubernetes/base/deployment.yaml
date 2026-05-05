@@ -37,15 +37,19 @@ spec:
             requests:
               cpu: "100m"
               memory: "128Mi"
-          livenessProbe:
+          startupProbe:
             tcpSocket:
               port: http
             initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            tcpSocket:
+              port: http
             periodSeconds: 10
           readinessProbe:
             tcpSocket:
               port: http
-            initialDelaySeconds: 3
             periodSeconds: 5
       volumes:
         - name: config

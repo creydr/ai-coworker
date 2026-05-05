@@ -1,4 +1,8 @@
-.PHONY: build run test docker sandbox-image dev-db lint
+.PHONY: build run test docker sandbox-image dev-db lint kind-create kind-load kind-deploy kind-smee kind-delete
+
+REGISTRY ?= quay.io/creydr
+IMAGE ?= $(REGISTRY)/ai-coworker:latest
+SANDBOX_IMAGE ?= $(REGISTRY)/ai-coworker-sandbox:latest
 
 build:
 	go build -o ai-coworker ./cmd/ai-coworker/
@@ -10,13 +14,28 @@ test:
 	go test ./...
 
 docker:
-	docker build -t ai-coworker:latest .
+	docker build -t $(IMAGE) .
 
 sandbox-image:
-	docker build -t ai-coworker-sandbox:latest -f sandbox/Dockerfile sandbox/
+	docker build -t $(SANDBOX_IMAGE) -f sandbox/Dockerfile sandbox/
 
 dev-db:
 	docker compose up -d postgres
 
 lint:
 	golangci-lint run ./...
+
+kind-create:
+	./hack/kind.sh --create
+
+kind-load: docker sandbox-image
+	IMAGE=$(IMAGE) SANDBOX_IMAGE=$(SANDBOX_IMAGE) ./hack/kind.sh --load
+
+kind-deploy:
+	./hack/kind.sh --deploy
+
+kind-smee:
+	./hack/kind.sh --smee
+
+kind-delete:
+	./hack/kind.sh --delete
