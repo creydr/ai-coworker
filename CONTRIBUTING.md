@@ -195,6 +195,22 @@ The KinD overlay (`deploy/kubernetes/overlays/kind/`) composes the base manifest
 
 ## Makefile Reference
 
+### Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `REGISTRY` | `quay.io/creydr` | Container image registry and namespace |
+| `IMAGE` | `$(REGISTRY)/ai-coworker:latest` | Service image |
+| `SANDBOX_IMAGE` | `$(REGISTRY)/ai-coworker-sandbox:latest` | Sandbox image |
+
+Override `REGISTRY` to use your own registry:
+
+```sh
+REGISTRY=ghcr.io/myorg make docker sandbox-image kind-load
+```
+
+### Targets
+
 | Target | Description |
 |---|---|
 | `make build` | Compile the binary to `./ai-coworker` |
