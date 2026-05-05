@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +20,9 @@ const (
 	errBackoff = 5 * time.Second
 	// pollInterval is the duration to wait between polling for new tasks.
 	pollInterval = 1 * time.Second
+	// reviewDebounce is the delay before absorbing sibling review tasks,
+	// giving remaining webhooks time to arrive and be persisted.
+	reviewDebounce = 500 * time.Millisecond
 )
 
 // WorkerPool manages a pool of goroutines that claim and process tasks.
@@ -125,6 +131,12 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		return
 	}
 
+	// Absorb sibling review tasks into a single execution.
+	var absorbedTasks []*domain.Task
+	if intent == domain.IntentReview {
+		absorbedTasks = wp.absorbReviewTasks(ctx, workerID, task)
+	}
+
 	// Select the executor based on intent.
 	var exec executor.Executor
 	switch intent {
@@ -134,7 +146,12 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		exec = wp.llmExec
 	}
 
-	// Build executor context and execute.
+	// Build executor context — use merged input if we absorbed tasks.
+	if len(absorbedTasks) > 0 {
+		event.Content = buildMergedReviewInput(task, absorbedTasks)
+		task.Input = event.Content
+	}
+
 	execCtx := &executor.Context{
 		Thread:   thread,
 		Messages: messages,
@@ -147,6 +164,9 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 	if err != nil {
 		wp.failTask(ctx, workerID, task, fmt.Errorf("executing task: %w", err))
 		wp.sendResponse(ctx, thread.ChannelRef, fmt.Sprintf("Sorry, I encountered an error while processing your request: %v", err))
+		for _, absorbed := range absorbedTasks {
+			wp.failTask(ctx, workerID, absorbed, fmt.Errorf("batch execution failed: %w", err))
+		}
 		return
 	}
 	slog.Info("task completed", "worker", workerID, "task", task.ID, "response_len", len(result.Response))
@@ -168,7 +188,12 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		slog.Error("error storing assistant message", "worker", workerID, "task", task.ID, "error", err)
 	}
 
-	wp.routeResponse(ctx, thread, task, result.Response)
+	if len(absorbedTasks) > 0 {
+		allTasks := append([]*domain.Task{task}, absorbedTasks...)
+		wp.routeBatchedResponses(ctx, workerID, thread, allTasks, result.Response)
+	} else {
+		wp.routeResponse(ctx, thread, task, result.Response)
+	}
 }
 
 // routeResponse enriches the ChannelRef with task metadata and sends the
@@ -207,5 +232,117 @@ func (wp *WorkerPool) sendResponse(ctx context.Context, ref domain.ChannelRef, m
 	}
 	if err := a.SendResponse(ctx, ref, message); err != nil {
 		slog.Error("error sending response", "channel", ref.Channel, "error", err)
+	}
+}
+
+func (wp *WorkerPool) absorbReviewTasks(ctx context.Context, workerID string, primaryTask *domain.Task) []*domain.Task {
+	select {
+	case <-time.After(reviewDebounce):
+	case <-ctx.Done():
+		return nil
+	}
+
+	claimed, err := wp.store.ClaimPendingTasks(ctx, primaryTask.ThreadID, workerID)
+	if err != nil {
+		slog.Error("error absorbing pending tasks", "worker", workerID, "thread", primaryTask.ThreadID, "error", err)
+		return nil
+	}
+
+	var reviewTasks []*domain.Task
+	for _, t := range claimed {
+		metaType := t.Metadata["type"]
+		if metaType == "review" || metaType == "review_comment" {
+			reviewTasks = append(reviewTasks, t)
+		} else {
+			t.Status = domain.TaskPending
+			t.WorkerID = ""
+			if err := wp.store.UpdateTask(ctx, t); err != nil {
+				slog.Error("error releasing non-review task", "worker", workerID, "task", t.ID, "error", err)
+			}
+		}
+	}
+
+	if len(reviewTasks) > 0 {
+		slog.Info("absorbed sibling review tasks", "worker", workerID,
+			"primary_task", primaryTask.ID, "absorbed_count", len(reviewTasks))
+	}
+	return reviewTasks
+}
+
+func buildMergedReviewInput(primary *domain.Task, absorbed []*domain.Task) string {
+	allTasks := append([]*domain.Task{primary}, absorbed...)
+	var sb strings.Builder
+	sb.WriteString("This review contains multiple comments. Please address all of them.\n")
+	sb.WriteString("After making all changes, respond with one section per comment using this exact format:\n\n")
+	sb.WriteString("--- COMMENT 1 ---\n")
+	sb.WriteString("Your response for comment 1\n\n")
+	sb.WriteString("--- COMMENT 2 ---\n")
+	sb.WriteString("Your response for comment 2\n\n")
+	sb.WriteString("Here are the review comments:\n\n")
+
+	for i, t := range allTasks {
+		fmt.Fprintf(&sb, "--- Comment %d", i+1)
+		if t.Metadata["type"] == "review" {
+			sb.WriteString(" (review body)")
+		} else if path := t.Metadata["path"]; path != "" {
+			fmt.Fprintf(&sb, " (on file: %s)", path)
+		}
+		sb.WriteString(" ---\n")
+		sb.WriteString(t.Input)
+		sb.WriteString("\n\n")
+	}
+	return sb.String()
+}
+
+var commentHeaderRe = regexp.MustCompile(`(?m)^---\s*COMMENT\s+(\d+)\s*---\s*$`)
+
+func parseCommentResponses(output string) map[int]string {
+	matches := commentHeaderRe.FindAllStringSubmatchIndex(output, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	responses := make(map[int]string, len(matches))
+	for i, match := range matches {
+		idx, err := strconv.Atoi(output[match[2]:match[3]])
+		if err != nil {
+			continue
+		}
+		contentStart := match[1]
+		var contentEnd int
+		if i+1 < len(matches) {
+			contentEnd = matches[i+1][0]
+		} else {
+			contentEnd = len(output)
+		}
+		responses[idx] = strings.TrimSpace(output[contentStart:contentEnd])
+	}
+	return responses
+}
+
+func (wp *WorkerPool) routeBatchedResponses(ctx context.Context, workerID string, thread *domain.Thread, allTasks []*domain.Task, fullResponse string) {
+	perComment := parseCommentResponses(fullResponse)
+
+	for i, t := range allTasks {
+		var response string
+		if perComment != nil {
+			if r, ok := perComment[i+1]; ok {
+				response = r
+			} else {
+				response = fullResponse
+			}
+		} else {
+			response = fullResponse
+		}
+
+		wp.routeResponse(ctx, thread, t, response)
+
+		if i > 0 {
+			t.Status = domain.TaskCompleted
+			t.Result = response
+			if err := wp.store.UpdateTask(ctx, t); err != nil {
+				slog.Error("error completing absorbed task", "worker", workerID, "task", t.ID, "error", err)
+			}
+		}
 	}
 }

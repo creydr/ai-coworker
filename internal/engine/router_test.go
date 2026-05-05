@@ -21,6 +21,7 @@ type mockStore struct {
 	createMessageFunc      func(ctx context.Context, m *domain.Message) error
 	createTaskFunc         func(ctx context.Context, t *domain.Task) error
 	claimNextTaskFunc      func(ctx context.Context, workerID string) (*domain.Task, error)
+	claimPendingTasksFunc  func(ctx context.Context, threadID, workerID string) ([]*domain.Task, error)
 	updateTaskFunc         func(ctx context.Context, t *domain.Task) error
 }
 
@@ -88,6 +89,13 @@ func (m *mockStore) CreateTask(ctx context.Context, t *domain.Task) error {
 func (m *mockStore) ClaimNextTask(ctx context.Context, workerID string) (*domain.Task, error) {
 	if m.claimNextTaskFunc != nil {
 		return m.claimNextTaskFunc(ctx, workerID)
+	}
+	return nil, nil
+}
+
+func (m *mockStore) ClaimPendingTasks(ctx context.Context, threadID, workerID string) ([]*domain.Task, error) {
+	if m.claimPendingTasksFunc != nil {
+		return m.claimPendingTasksFunc(ctx, threadID, workerID)
 	}
 	return nil, nil
 }

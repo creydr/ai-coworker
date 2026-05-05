@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/creydr/ai-coworker/internal/domain"
@@ -364,6 +365,229 @@ func TestWorker_IntentRouting_ReviewShortCircuit(t *testing.T) {
 	}
 	if llmExec.capturedCtx != nil {
 		t.Error("llm executor should not be called for review intent")
+	}
+}
+
+func TestParseCommentResponses_ValidOutput(t *testing.T) {
+	output := `--- COMMENT 1 ---
+Fixed the error handling in parse().
+
+--- COMMENT 2 ---
+Added validation for empty strings.
+
+--- COMMENT 3 ---
+Good catch, updated the docs.`
+
+	responses := parseCommentResponses(output)
+	if responses == nil {
+		t.Fatal("parseCommentResponses returned nil")
+	}
+	if len(responses) != 3 {
+		t.Fatalf("expected 3 responses, got %d", len(responses))
+	}
+	if responses[1] != "Fixed the error handling in parse()." {
+		t.Errorf("responses[1] = %q", responses[1])
+	}
+	if responses[2] != "Added validation for empty strings." {
+		t.Errorf("responses[2] = %q", responses[2])
+	}
+	if responses[3] != "Good catch, updated the docs." {
+		t.Errorf("responses[3] = %q", responses[3])
+	}
+}
+
+func TestParseCommentResponses_NoMarkers(t *testing.T) {
+	output := "Here is a plain response without any markers."
+	responses := parseCommentResponses(output)
+	if responses != nil {
+		t.Errorf("expected nil, got %v", responses)
+	}
+}
+
+func TestParseCommentResponses_PartialMarkers(t *testing.T) {
+	output := `--- COMMENT 1 ---
+Only the first comment has a marker.`
+
+	responses := parseCommentResponses(output)
+	if responses == nil {
+		t.Fatal("parseCommentResponses returned nil")
+	}
+	if len(responses) != 1 {
+		t.Fatalf("expected 1 response, got %d", len(responses))
+	}
+	if responses[1] != "Only the first comment has a marker." {
+		t.Errorf("responses[1] = %q", responses[1])
+	}
+}
+
+func TestBuildMergedReviewInput(t *testing.T) {
+	primary := &domain.Task{
+		Input: "fix the error handling",
+		Metadata: map[string]string{
+			"type": "review",
+		},
+	}
+	absorbed := []*domain.Task{
+		{
+			Input: "add validation here",
+			Metadata: map[string]string{
+				"type": "review_comment",
+				"path": "internal/config/config.go",
+			},
+		},
+	}
+
+	result := buildMergedReviewInput(primary, absorbed)
+
+	if !strings.Contains(result, "multiple comments") {
+		t.Error("merged input should mention multiple comments")
+	}
+	if !strings.Contains(result, "--- Comment 1 (review body) ---") {
+		t.Error("primary task should be labeled as review body")
+	}
+	if !strings.Contains(result, "--- Comment 2 (on file: internal/config/config.go) ---") {
+		t.Error("absorbed task should show file path")
+	}
+	if !strings.Contains(result, "fix the error handling") {
+		t.Error("primary task input should be included")
+	}
+	if !strings.Contains(result, "add validation here") {
+		t.Error("absorbed task input should be included")
+	}
+}
+
+func TestWorker_BatchedReviewRouting(t *testing.T) {
+	ms, adpt, codeExec, _, _ := newWorkerTestSetup()
+
+	codeExec.result = &executor.Result{
+		Response: "--- COMMENT 1 ---\nFixed the review body issue.\n\n--- COMMENT 2 ---\nAdded the validation.\n\n--- COMMENT 3 ---\nUpdated the docs.",
+	}
+
+	thread := &domain.Thread{
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#7",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "7",
+			},
+		},
+		Status: domain.ThreadActive,
+	}
+	ms.threads["thread-1"] = thread
+
+	primary := &domain.Task{
+		ID:       "task-1",
+		ThreadID: "thread-1",
+		Status:   domain.TaskInProgress,
+		Input:    "fix error handling",
+		Metadata: map[string]string{
+			"type":       "review",
+			"comment_id": "100",
+		},
+	}
+	absorbed := []*domain.Task{
+		{
+			ID:       "task-2",
+			ThreadID: "thread-1",
+			Status:   domain.TaskInProgress,
+			Input:    "add validation",
+			Metadata: map[string]string{
+				"type":       "review_comment",
+				"comment_id": "101",
+			},
+		},
+		{
+			ID:       "task-3",
+			ThreadID: "thread-1",
+			Status:   domain.TaskInProgress,
+			Input:    "update docs",
+			Metadata: map[string]string{
+				"type":       "review_comment",
+				"comment_id": "102",
+			},
+		},
+	}
+
+	router := NewRouter(ms)
+	router.RegisterAdapter(adpt)
+	wp := &WorkerPool{store: ms, router: router}
+	allTasks := append([]*domain.Task{primary}, absorbed...)
+	wp.routeBatchedResponses(context.Background(), "worker-0", thread, allTasks, codeExec.result.Response)
+
+	if len(adpt.responseCalls) != 3 {
+		t.Fatalf("expected 3 response calls, got %d", len(adpt.responseCalls))
+	}
+
+	if !strings.Contains(adpt.responseCalls[0].Message, "Fixed the review body issue.") {
+		t.Errorf("response 0 = %q, want review body response", adpt.responseCalls[0].Message)
+	}
+	if !strings.Contains(adpt.responseCalls[1].Message, "Added the validation.") {
+		t.Errorf("response 1 = %q, want validation response", adpt.responseCalls[1].Message)
+	}
+	if !strings.Contains(adpt.responseCalls[2].Message, "Updated the docs.") {
+		t.Errorf("response 2 = %q, want docs response", adpt.responseCalls[2].Message)
+	}
+
+	if absorbed[0].Status != domain.TaskCompleted {
+		t.Errorf("absorbed task 1 status = %q, want completed", absorbed[0].Status)
+	}
+	if absorbed[1].Status != domain.TaskCompleted {
+		t.Errorf("absorbed task 2 status = %q, want completed", absorbed[1].Status)
+	}
+}
+
+func TestWorker_BatchedReviewFallback(t *testing.T) {
+	ms, adpt, _, _, _ := newWorkerTestSetup()
+
+	thread := &domain.Thread{
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#7",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "7",
+			},
+		},
+		Status: domain.ThreadActive,
+	}
+	ms.threads["thread-1"] = thread
+
+	primary := &domain.Task{
+		ID:       "task-1",
+		ThreadID: "thread-1",
+		Status:   domain.TaskInProgress,
+		Input:    "fix it",
+		Metadata: map[string]string{"type": "review"},
+	}
+	absorbed := []*domain.Task{
+		{
+			ID:       "task-2",
+			ThreadID: "thread-1",
+			Status:   domain.TaskInProgress,
+			Input:    "also this",
+			Metadata: map[string]string{"type": "review_comment"},
+		},
+	}
+
+	router := NewRouter(ms)
+	router.RegisterAdapter(adpt)
+	wp := &WorkerPool{store: ms, router: router}
+
+	fullResponse := "I fixed everything in one go."
+	allTasks := append([]*domain.Task{primary}, absorbed...)
+	wp.routeBatchedResponses(context.Background(), "worker-0", thread, allTasks, fullResponse)
+
+	if len(adpt.responseCalls) != 2 {
+		t.Fatalf("expected 2 response calls, got %d", len(adpt.responseCalls))
+	}
+
+	for i, call := range adpt.responseCalls {
+		if call.Message != fullResponse {
+			t.Errorf("response %d = %q, want full response fallback", i, call.Message)
+		}
 	}
 }
 
