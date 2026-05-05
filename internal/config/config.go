@@ -29,13 +29,12 @@ const (
 )
 
 type Config struct {
-	ListenAddr string         `koanf:"listen_addr"`
-	Database   DatabaseConfig `koanf:"database"`
-	LLM        LLMConfig      `koanf:"llm"`
-	Slack      SlackConfig    `koanf:"slack"`
-	GitHub     GitHubConfig   `koanf:"github"`
-	Sandbox    SandboxConfig  `koanf:"sandbox"`
-	Workers    int            `koanf:"workers"`
+	Database DatabaseConfig `koanf:"database"`
+	LLM      LLMConfig      `koanf:"llm"`
+	Slack    SlackConfig    `koanf:"slack"`
+	GitHub   GitHubConfig   `koanf:"github"`
+	Sandbox  SandboxConfig  `koanf:"sandbox"`
+	Workers  int            `koanf:"workers"`
 }
 
 type DatabaseConfig struct {
@@ -66,11 +65,13 @@ type SlackConfig struct {
 }
 
 type GitHubConfig struct {
-	Enabled       bool   `koanf:"enabled"`
-	AppID         int64  `koanf:"app_id"`
-	PrivateKey    string `koanf:"private_key"`
-	WebhookSecret string `koanf:"webhook_secret"`
-	BotUsername   string `koanf:"bot_username"`
+	Enabled       bool     `koanf:"enabled"`
+	AppID         int64    `koanf:"app_id"`
+	PrivateKey    string   `koanf:"private_key"`
+	WebhookSecret string   `koanf:"webhook_secret"`
+	BotUsername   string   `koanf:"bot_username"`
+	AllowedUsers  []string `koanf:"allowed_users"`
+	ListenAddr    string   `koanf:"listen_addr"`
 }
 
 type SandboxConfig struct {
@@ -104,8 +105,8 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Apply defaults
-	if cfg.ListenAddr == "" {
-		cfg.ListenAddr = defaultListenAddr
+	if cfg.GitHub.ListenAddr == "" {
+		cfg.GitHub.ListenAddr = defaultListenAddr
 	}
 	if cfg.Workers == 0 {
 		cfg.Workers = defaultWorkers
