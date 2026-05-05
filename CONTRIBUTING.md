@@ -1,5 +1,67 @@
 # Contributing
 
+## Architecture
+
+```
+Channel (Slack, GitHub, ...)
+      |
+  Channel Adapters ── normalize events
+      |
+  Event Router ── match to threads, create tasks
+      |
+  Worker Pool ── claim tasks (FOR UPDATE SKIP LOCKED)
+      |
+  Intent Classifier ── code_task | question | discussion | review
+      |
+  ┌───────────────┐     ┌────────────┐
+  │ Claude Code   │     │ LLM Direct │
+  │ (sandbox)     │     │ (Q&A)      │
+  └───────────────┘     └────────────┘
+```
+
+- **Channel adapters** receive events from external channels and normalize them into a common `IncomingEvent` format. The `adapter.Adapter` interface is pluggable — currently ships with GitHub (App webhooks) and Slack (Socket Mode).
+- **Event router** maps events to conversation threads stored in PostgreSQL and enqueues tasks.
+- **Worker pool** runs configurable goroutines that claim pending tasks from the database.
+- **Intent classifier** uses the LLM to categorize each task as a code task, question, discussion, or review.
+- **Code tasks** run inside ephemeral Docker containers with Claude Code CLI (`--dangerously-skip-permissions`), with full git/GitHub access.
+- **Non-code tasks** (questions, discussions) go directly to the LLM for a conversational response.
+
+See [docs/architecture.md](docs/architecture.md) for a detailed overview of the system design, component responsibilities, and the thread-based conversation model.
+
+## Project Structure
+
+```
+cmd/ai-coworker/          Entry point
+internal/
+  adapter/                Channel adapter interface
+    github/               GitHub App webhook adapter (ref.go for typed helpers)
+    slack/                Slack Socket Mode adapter (ref.go for typed helpers)
+  config/                 Configuration loading (koanf)
+  domain/                 Core types (Event, Thread, Task, Message)
+  engine/                 Router, worker pool, intent classifier
+  executor/
+    claudecode/           Sandbox executor (Docker + Claude Code)
+    llmexec/              Direct LLM executor (Q&A)
+  llm/                    LLM provider interface
+    claude/               Anthropic Claude implementation
+    vertex/               Vertex AI (Claude on Google Cloud)
+    openai/               OpenAI-compatible API
+  sandbox/                Sandbox runtime interface
+    docker/               Docker container runtime
+    kubernetes/           Kubernetes Job runtime
+  store/                  Data store interface + PostgreSQL implementation
+    migrations/           SQL migration files
+sandbox/                  Dockerfile and entrypoint for sandbox image
+deploy/kubernetes/        Kustomize manifests for Kubernetes deployment
+  base/                   Base manifests (Deployment, Service, RBAC, config)
+  components/postgres/    Kustomize component: PostgreSQL Deployment
+  components/google-adc/  Kustomize component: Google ADC for Vertex AI
+  overlays/with-postgres/ Overlay: base + postgres
+  overlays/kind/          Overlay: base + postgres + google-adc (local testing)
+hack/                     Developer scripts
+  kind.sh                 KinD cluster lifecycle for local e2e testing
+```
+
 ## Prerequisites
 
 - Go 1.22+
@@ -35,7 +97,7 @@ AI_COWORKER__GITHUB__ENABLED=true \
 AI_COWORKER__GITHUB__APP_ID=<your-app-id> \
 AI_COWORKER__GITHUB__PRIVATE_KEY="$(cat path/to/private-key.pem)" \
 AI_COWORKER__GITHUB__WEBHOOK_SECRET="$(cat path/to/webhook-secret)" \
-AI_COWORKER__GITHUB__BOT_USERNAME="your-bot[bot]" \
+AI_COWORKER__GITHUB__BOT_USERNAME="your-bot" \
 make run
 ```
 
@@ -55,7 +117,7 @@ The Slack adapter uses Socket Mode (outbound WebSocket), so no public URL is nee
 
 ### LLM Providers
 
-The service supports three LLM backends: Claude (direct API), Vertex AI (Claude on Google Cloud), and OpenAI-compatible APIs. See the [README](README.md#llm-providers) for provider-specific configuration.
+The service supports three LLM backends: Claude (direct API), Vertex AI (Claude on Google Cloud), and OpenAI-compatible APIs. See the [deployment guide](docs/deployment.md#llm-providers) for provider-specific configuration.
 
 ### Using Vertex AI
 
@@ -66,7 +128,7 @@ AI_COWORKER__LLM__MODEL=claude-sonnet-4-6 \
 make run
 ```
 
-Vertex AI uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials). Run `gcloud auth application-default login` first.
+Vertex AI uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials). Run `gcloud auth application-default login` first, which will write credentials to `~/.config/gcloud/application_default_credentials.json`..
 
 ## GitHub App Setup for Development
 
@@ -150,10 +212,6 @@ TEST_DATABASE_URL="postgres://ai-coworker:password@localhost:5432/ai-coworker?ss
 make lint
 ```
 
-## Architecture
-
-See [docs/architecture.md](docs/architecture.md) for an overview of the system design, component responsibilities, and the thread-based conversation model.
-
 ## Local E2E Testing with KinD
 
 For end-to-end testing on Kubernetes, use the `hack/kind.sh` script to spin up a [KinD](https://kind.sigs.k8s.io/) cluster with the full stack deployed.
@@ -175,8 +233,8 @@ AI_COWORKER__LLM__MODEL=claude-sonnet-4-6 \
 AI_COWORKER__GITHUB__ENABLED=true \
 AI_COWORKER__GITHUB__APP_ID=... \
 AI_COWORKER__GITHUB__PRIVATE_KEY="$(cat key.pem)" \
-AI_COWORKER__GITHUB__WEBHOOK_SECRET="$(cat secret)" \
-AI_COWORKER__GITHUB__BOT_USERNAME=my-bot \
+AI_COWORKER__GITHUB__WEBHOOK_SECRET="$(cat webhook-secret)" \
+AI_COWORKER__GITHUB__BOT_USERNAME=my-app \
   make kind-deploy                        # deploy and inject secrets from env vars
 SMEE_URL=https://smee.io/... make kind-smee  # forward GitHub webhooks
 make kind-delete                          # tear down
