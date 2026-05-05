@@ -4,8 +4,6 @@ metadata:
   name: ai-coworker
 data:
   config.yaml: |
-    listen_addr: ":8080"
-
     # database.url is overridden by AI_COWORKER__DATABASE__URL from the Secret
     database: {}
 
@@ -23,6 +21,7 @@ data:
 
     github:
       enabled: false
+      listen_addr: ":8080"
 
     slack:
       enabled: false

@@ -25,13 +25,29 @@ type Adapter struct {
 	botUsername         string
 	listenAddr          string
 	server              *http.Server
+	allowedUsers        map[string]bool
+	allowAll            bool
 }
 
-// New creates a new GitHub adapter with the given app credentials and configuration
-func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAddr string) (*Adapter, error) {
+// New creates a new GitHub adapter with the given app credentials and configuration.
+// allowedUsers controls who can trigger the bot:
+//   - empty list: nobody is allowed (secure by default)
+//   - list containing "*": all users are allowed
+//   - list of usernames: only those users are allowed
+func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAddr string, allowedUsers []string) (*Adapter, error) {
 	atr, err := ghinstallation.NewAppsTransport(http.DefaultTransport, appID, privateKeyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("creating GitHub Apps transport: %w", err)
+	}
+
+	allowAll := false
+	users := make(map[string]bool, len(allowedUsers))
+	for _, u := range allowedUsers {
+		if u == "*" {
+			allowAll = true
+			break
+		}
+		users[u] = true
 	}
 
 	return &Adapter{
@@ -39,6 +55,8 @@ func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAd
 		webhookSecret: []byte(webhookSecret),
 		botUsername:   botUsername,
 		listenAddr:    listenAddr,
+		allowedUsers:  users,
+		allowAll:      allowAll,
 	}, nil
 }
 
@@ -56,6 +74,28 @@ func (a *Adapter) getClientForRepo(repo string) (*gh.Client, error) {
 	}
 	installationID := v.(int64)
 	return a.getInstallationClient(installationID), nil
+}
+
+func (a *Adapter) isUserAllowed(username string) bool {
+	if a.allowAll {
+		return true
+	}
+	return a.allowedUsers[username]
+}
+
+func (a *Adapter) denyUnauthorized(ctx context.Context, installationID int64, repoFullName string, issueNum int, body string) {
+	client := a.getInstallationClient(installationID)
+	owner, repo, err := splitRepo(repoFullName)
+	if err != nil {
+		slog.Error("error splitting repo for denial response", "error", err)
+		return
+	}
+
+	msg := fmt.Sprintf("Sorry, you don't have permission to interact with me.\n\n> %s", strings.ReplaceAll(body, "\n", "\n> "))
+	comment := &gh.IssueComment{Body: gh.Ptr(msg)}
+	if _, _, err := client.Issues.CreateComment(ctx, owner, repo, issueNum, comment); err != nil {
+		slog.Error("error sending denial response", "error", err)
+	}
 }
 
 func (a *Adapter) Name() string {
@@ -142,6 +182,10 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 	w.WriteHeader(http.StatusOK)
 }
 
+func (a *Adapter) isBotUser(login string) bool {
+	return login == a.botUsername || login == a.botUsername+"[bot]"
+}
+
 func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEvent, installationID int64, handler adapter.EventHandler) error {
 	if e.GetAction() != "created" {
 		return nil
@@ -150,6 +194,18 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 	body := e.GetComment().GetBody()
 	mention := "@" + a.botUsername
 	if !strings.Contains(body, mention) {
+		return nil
+	}
+
+	userLogin := e.GetComment().GetUser().GetLogin()
+	if a.isBotUser(userLogin) {
+		slog.Debug("ignoring own comment", "user", userLogin, "event", "issue_comment")
+		return nil
+	}
+	if !a.isUserAllowed(userLogin) {
+		slog.Info("unauthorized user", "user", userLogin, "event", "issue_comment")
+		repoFullName := e.GetRepo().GetFullName()
+		a.denyUnauthorized(ctx, installationID, repoFullName, e.GetIssue().GetNumber(), body)
 		return nil
 	}
 
@@ -164,7 +220,7 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 	incoming := domain.IncomingEvent{
 		ChannelRef: ref,
 		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, issueNum),
-		UserID:     e.GetComment().GetUser().GetLogin(),
+		UserID:     userLogin,
 		Content:    content,
 		Metadata: map[string]string{
 			"type":            "issue_comment",
@@ -189,6 +245,18 @@ func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestRe
 		return nil
 	}
 
+	userLogin := e.GetComment().GetUser().GetLogin()
+	if a.isBotUser(userLogin) {
+		slog.Debug("ignoring own comment", "user", userLogin, "event", "pr_review_comment")
+		return nil
+	}
+	if !a.isUserAllowed(userLogin) {
+		slog.Info("unauthorized user", "user", userLogin, "event", "pr_review_comment")
+		repoFullName := e.GetRepo().GetFullName()
+		a.denyUnauthorized(ctx, installationID, repoFullName, e.GetPullRequest().GetNumber(), body)
+		return nil
+	}
+
 	content := strings.TrimSpace(strings.ReplaceAll(body, mention, ""))
 
 	repoFullName := e.GetRepo().GetFullName()
@@ -199,7 +267,7 @@ func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestRe
 	incoming := domain.IncomingEvent{
 		ChannelRef: ref,
 		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, prNum),
-		UserID:     e.GetComment().GetUser().GetLogin(),
+		UserID:     userLogin,
 		Content:    content,
 		Metadata: map[string]string{
 			"type":            "review_comment",
@@ -228,6 +296,18 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 		return nil
 	}
 
+	userLogin := e.GetReview().GetUser().GetLogin()
+	if a.isBotUser(userLogin) {
+		slog.Debug("ignoring own comment", "user", userLogin, "event", "pr_review")
+		return nil
+	}
+	if !a.isUserAllowed(userLogin) {
+		slog.Info("unauthorized user", "user", userLogin, "event", "pr_review")
+		repoFullName := e.GetRepo().GetFullName()
+		a.denyUnauthorized(ctx, installationID, repoFullName, e.GetPullRequest().GetNumber(), body)
+		return nil
+	}
+
 	content := strings.TrimSpace(strings.ReplaceAll(body, mention, ""))
 
 	repoFullName := e.GetRepo().GetFullName()
@@ -236,7 +316,7 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 	incoming := domain.IncomingEvent{
 		ChannelRef: NewRef(repoFullName, prNum),
 		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, prNum),
-		UserID:     e.GetReview().GetUser().GetLogin(),
+		UserID:     userLogin,
 		Content:    content,
 		Metadata: map[string]string{
 			"type":            "review",

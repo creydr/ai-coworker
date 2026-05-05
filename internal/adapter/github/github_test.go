@@ -94,8 +94,13 @@ func generateTestPEMKey(t *testing.T) []byte {
 // webhook secret and bot username.
 func newTestAdapter(t *testing.T, webhookSecret, botUsername string) *Adapter {
 	t.Helper()
+	return newTestAdapterWithUsers(t, webhookSecret, botUsername, []string{"*"})
+}
+
+func newTestAdapterWithUsers(t *testing.T, webhookSecret, botUsername string, allowedUsers []string) *Adapter {
+	t.Helper()
 	pemKey := generateTestPEMKey(t)
-	a, err := New(12345, pemKey, webhookSecret, botUsername, ":8080")
+	a, err := New(12345, pemKey, webhookSecret, botUsername, ":8080", allowedUsers)
 	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
@@ -581,4 +586,83 @@ func TestGetInstallationClient_Caching(t *testing.T) {
 
 	// Suppress unused import lint for gh package (used in signature only via getInstallationClient return type).
 	var _ *gh.Client
+}
+
+func TestIsUserAllowed(t *testing.T) {
+	tests := []struct {
+		name         string
+		allowedUsers []string
+		username     string
+		want         bool
+	}{
+		{"wildcard allows all", []string{"*"}, "anyone", true},
+		{"explicit user allowed", []string{"alice", "bob"}, "alice", true},
+		{"explicit user denied", []string{"alice", "bob"}, "eve", false},
+		{"empty list denies all", []string{}, "anyone", false},
+		{"nil list denies all", nil, "anyone", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := newTestAdapterWithUsers(t, "secret", "bot", tt.allowedUsers)
+			if got := a.isUserAllowed(tt.username); got != tt.want {
+				t.Errorf("isUserAllowed(%q) = %v, want %v", tt.username, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHandleIssueComment_UnauthorizedUser(t *testing.T) {
+	const secret = "test-secret"
+	a := newTestAdapterWithUsers(t, secret, "ai-coworker", []string{"alice"})
+
+	handlerCalled := false
+	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+		handlerCalled = true
+		return nil
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
+		a.handleWebhook(r.Context(), w, r, handler)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	payload := issueCommentPayload(t, "@ai-coworker fix this", "org/repo", "eve", 1, 111, 88888, false)
+	resp := sendWebhook(t, ts, "issue_comment", payload, secret)
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if handlerCalled {
+		t.Fatal("handler should not be called for unauthorized user")
+	}
+}
+
+func TestHandleIssueComment_EmptyAllowlistBlocksAll(t *testing.T) {
+	const secret = "test-secret"
+	a := newTestAdapterWithUsers(t, secret, "ai-coworker", []string{})
+
+	handlerCalled := false
+	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+		handlerCalled = true
+		return nil
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
+		a.handleWebhook(r.Context(), w, r, handler)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	payload := issueCommentPayload(t, "@ai-coworker fix this", "org/repo", "anyone", 1, 111, 77777, false)
+	resp := sendWebhook(t, ts, "issue_comment", payload, secret)
+	_ = resp.Body.Close()
+
+	if handlerCalled {
+		t.Fatal("handler should not be called when allowlist is empty")
+	}
 }
