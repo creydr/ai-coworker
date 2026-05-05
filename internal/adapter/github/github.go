@@ -393,23 +393,27 @@ func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error 
 	return nil
 }
 
-func (a *Adapter) CreateInstallationToken(ctx context.Context, installationID int64) (string, error) {
-	appClient := gh.NewClient(&http.Client{Transport: a.appsTransport})
+func (a *Adapter) CreateInstallationTokenForRepo(ctx context.Context, fullRepo string) (string, error) {
+	v, ok := a.repoInstallations.Load(fullRepo)
+	if !ok {
+		return "", fmt.Errorf("no installation ID known for repo %q", fullRepo)
+	}
+	installationID := v.(int64)
 
-	token, _, err := appClient.Apps.CreateInstallationToken(ctx, installationID, nil)
+	_, repoName, err := splitRepo(fullRepo)
+	if err != nil {
+		return "", err
+	}
+
+	appClient := gh.NewClient(&http.Client{Transport: a.appsTransport})
+	token, _, err := appClient.Apps.CreateInstallationToken(ctx, installationID, &gh.InstallationTokenOptions{
+		Repositories: []string{repoName},
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create installation token: %w", err)
 	}
 
 	return token.GetToken(), nil
-}
-
-func (a *Adapter) CreateInstallationTokenForRepo(ctx context.Context, repo string) (string, error) {
-	v, ok := a.repoInstallations.Load(repo)
-	if !ok {
-		return "", fmt.Errorf("no installation ID known for repo %q", repo)
-	}
-	return a.CreateInstallationToken(ctx, v.(int64))
 }
 
 func splitRepo(fullName string) (owner, repo string, err error) {
