@@ -154,6 +154,45 @@ make lint
 
 See [docs/architecture.md](docs/architecture.md) for an overview of the system design, component responsibilities, and the thread-based conversation model.
 
+## Local E2E Testing with KinD
+
+For end-to-end testing on Kubernetes, use the `hack/kind.sh` script to spin up a [KinD](https://kind.sigs.k8s.io/) cluster with the full stack deployed.
+
+### Prerequisites
+
+- [KinD](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) (`kind`)
+- [smee-client](https://github.com/probot/smee-client) (`npm install -g smee-client`)
+- Google Cloud ADC configured (`gcloud auth application-default login`) if using Vertex AI
+
+### Workflow
+
+```sh
+make kind-create                          # create KinD cluster
+make kind-load                            # build images and load into cluster
+AI_COWORKER__LLM__PROVIDER=vertex \
+AI_COWORKER__LLM__VERTEX__PROJECT_ID=... \
+AI_COWORKER__LLM__MODEL=claude-sonnet-4-6 \
+AI_COWORKER__GITHUB__ENABLED=true \
+AI_COWORKER__GITHUB__APP_ID=... \
+AI_COWORKER__GITHUB__PRIVATE_KEY="$(cat key.pem)" \
+AI_COWORKER__GITHUB__WEBHOOK_SECRET="$(cat secret)" \
+AI_COWORKER__GITHUB__BOT_USERNAME=my-bot \
+  make kind-deploy                        # deploy and inject secrets from env vars
+SMEE_URL=https://smee.io/... make kind-smee  # forward GitHub webhooks
+make kind-delete                          # tear down
+```
+
+The `kind-deploy` target collects all `AI_COWORKER__*` env vars into a K8s secret (multiline values like PEM keys are preserved). If Google ADC credentials are found locally, they are automatically mounted into the pod.
+
+Commands can be combined via the script: `./hack/kind.sh --create --load --deploy`. Flags always execute in the correct lifecycle order regardless of argument order.
+
+### What gets deployed
+
+The KinD overlay (`deploy/kubernetes/overlays/kind/`) composes the base manifests with two Kustomize components:
+
+- `components/postgres` — PostgreSQL Deployment with emptyDir storage
+- `components/google-adc` — Google ADC secret and volume mount for Vertex AI
+
 ## Makefile Reference
 
 | Target | Description |
@@ -161,7 +200,12 @@ See [docs/architecture.md](docs/architecture.md) for an overview of the system d
 | `make build` | Compile the binary to `./ai-coworker` |
 | `make run` | Build and run the service |
 | `make test` | Run unit tests |
-| `make lint` | Run `go vet` |
+| `make lint` | Run golangci-lint |
 | `make dev-db` | Start PostgreSQL 16 via Docker Compose |
 | `make sandbox-image` | Build the sandbox Docker image locally |
 | `make docker` | Build the service Docker image |
+| `make kind-create` | Create a KinD cluster for local testing |
+| `make kind-load` | Build images and load into KinD |
+| `make kind-deploy` | Deploy to KinD with secrets from env vars |
+| `make kind-smee` | Forward GitHub webhooks via smee |
+| `make kind-delete` | Tear down KinD cluster |
