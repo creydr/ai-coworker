@@ -297,6 +297,10 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 	}
 
 	body := e.GetReview().GetBody()
+	if strings.TrimSpace(body) == "" {
+		return nil
+	}
+
 	mention := "@" + a.botUsername
 	mentioned := strings.Contains(body, mention)
 	isBotPR := a.isBotUser(e.GetPullRequest().GetUser().GetLogin())
