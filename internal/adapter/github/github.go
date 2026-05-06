@@ -193,7 +193,10 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 
 	body := e.GetComment().GetBody()
 	mention := "@" + a.botUsername
-	if !strings.Contains(body, mention) {
+	mentioned := strings.Contains(body, mention)
+	isBotPR := e.GetIssue().IsPullRequest() && a.isBotUser(e.GetIssue().GetUser().GetLogin())
+
+	if !mentioned && !isBotPR {
 		return nil
 	}
 
@@ -241,7 +244,10 @@ func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestRe
 
 	body := e.GetComment().GetBody()
 	mention := "@" + a.botUsername
-	if !strings.Contains(body, mention) {
+	mentioned := strings.Contains(body, mention)
+	isBotPR := a.isBotUser(e.GetPullRequest().GetUser().GetLogin())
+
+	if !mentioned && !isBotPR {
 		return nil
 	}
 
@@ -292,7 +298,10 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 
 	body := e.GetReview().GetBody()
 	mention := "@" + a.botUsername
-	if !strings.Contains(body, mention) {
+	mentioned := strings.Contains(body, mention)
+	isBotPR := a.isBotUser(e.GetPullRequest().GetUser().GetLogin())
+
+	if !mentioned && !isBotPR {
 		return nil
 	}
 
