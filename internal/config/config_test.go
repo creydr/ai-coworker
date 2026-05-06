@@ -17,7 +17,7 @@ func writeTempConfig(t *testing.T, content string) string {
 	return path
 }
 
-const minConfig = "database:\n  url: postgres://localhost/test\nllm:\n  provider: claude\n  api_key: sk-test\n  model: claude-sonnet-4-6\n"
+const minConfig = "database:\n  url: postgres://localhost/test\nllm:\n  provider: claude\n  apiKey: sk-test\n  model: claude-sonnet-4-6\n"
 
 func TestLoad_Defaults(t *testing.T) {
 	path := writeTempConfig(t, minConfig)
@@ -140,7 +140,7 @@ func TestLoad_NestedEnvVars(t *testing.T) {
 }
 
 func TestLoad_EnvVarOverridesConfigFile(t *testing.T) {
-	path := writeTempConfig(t, "llm:\n  provider: claude\n  api_key: sk-test\n  model: old-model\ndatabase:\n  url: postgres://localhost/test\n")
+	path := writeTempConfig(t, "llm:\n  provider: claude\n  apiKey: sk-test\n  model: old-model\ndatabase:\n  url: postgres://localhost/test\n")
 
 	t.Setenv("AI_COWORKER__LLM__MODEL", "new-model")
 

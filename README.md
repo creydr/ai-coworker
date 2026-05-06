@@ -52,9 +52,9 @@ To use the GitHub handler, you'll need a [GitHub App](#github-app-setup). For th
    ```yaml
    github:
      enabled: true
-     app_id: 12345
-     bot_username: "my-ai-coworker"
-     allowed_users:
+     appId: 12345
+     botUsername: "my-ai-coworker"
+     allowedUsers:
        - "user1"
        - "user2"
    ```
@@ -65,7 +65,7 @@ To use the GitHub handler, you'll need a [GitHub App](#github-app-setup). For th
    export AI_COWORKER__GITHUB__WEBHOOK_SECRET=<your-webhook-secret>
    ```
 
-   `allowed_users` controls which GitHub users can trigger the bot:
+   `allowedUsers` controls which GitHub users can trigger the bot:
    - **List of usernames** (e.g. `["user1", "user2"]`): only those users can interact with the bot
    - **`["*"]`**: all users are allowed
    - **Empty / unset**: nobody is allowed (secure by default)
