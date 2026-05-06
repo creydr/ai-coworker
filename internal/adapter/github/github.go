@@ -14,13 +14,15 @@ import (
 
 	"github.com/creydr/ai-coworker/internal/adapter"
 	"github.com/creydr/ai-coworker/internal/domain"
+	"github.com/creydr/ai-coworker/internal/vcs"
+	vcsgithub "github.com/creydr/ai-coworker/internal/vcs/github"
 )
 
 // Adapter implements the adapter interface for GitHub using webhooks and the GitHub API
 type Adapter struct {
 	appsTransport       *ghinstallation.AppsTransport
+	vcsProvider         *vcsgithub.Provider
 	installationClients sync.Map // maps int64 installationID → *gh.Client
-	repoInstallations   sync.Map // maps string repo → int64 installationID
 	webhookSecret       []byte
 	botUsername         string
 	listenAddr          string
@@ -52,6 +54,7 @@ func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAd
 
 	return &Adapter{
 		appsTransport: atr,
+		vcsProvider:   vcsgithub.New(atr),
 		webhookSecret: []byte(webhookSecret),
 		botUsername:   botUsername,
 		listenAddr:    listenAddr,
@@ -67,12 +70,11 @@ func (a *Adapter) getInstallationClient(installationID int64) *gh.Client {
 	return v.(*gh.Client)
 }
 
-func (a *Adapter) getClientForRepo(repo string) (*gh.Client, error) {
-	v, ok := a.repoInstallations.Load(repo)
-	if !ok {
-		return nil, fmt.Errorf("no installation ID known for repo %q", repo)
+func (a *Adapter) getClientForRepo(ctx context.Context, repo string) (*gh.Client, error) {
+	installationID, err := a.vcsProvider.GetInstallationID(ctx, repo)
+	if err != nil {
+		return nil, err
 	}
-	installationID := v.(int64)
 	return a.getInstallationClient(installationID), nil
 }
 
@@ -85,7 +87,7 @@ func (a *Adapter) isUserAllowed(username string) bool {
 
 func (a *Adapter) denyUnauthorized(ctx context.Context, installationID int64, repoFullName string, issueNum int, body string) {
 	client := a.getInstallationClient(installationID)
-	owner, repo, err := splitRepo(repoFullName)
+	owner, repo, err := vcsgithub.SplitRepo(repoFullName)
 	if err != nil {
 		slog.Error("error splitting repo for denial response", "error", err)
 		return
@@ -145,7 +147,9 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 	case *gh.IssueCommentEvent:
 		installationID := e.GetInstallation().GetID()
 		repoFullName := e.GetRepo().GetFullName()
-		a.repoInstallations.Store(repoFullName, installationID)
+		// Cache the installation ID from the webhook so the VCS provider can
+		// create scoped tokens later without an extra API round-trip.
+		a.vcsProvider.TrackInstallation(repoFullName, installationID)
 
 		if err := a.handleIssueComment(ctx, e, installationID, handler); err != nil {
 			slog.Error("error handling issue comment event", "error", err)
@@ -156,7 +160,7 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 	case *gh.PullRequestReviewCommentEvent:
 		installationID := e.GetInstallation().GetID()
 		repoFullName := e.GetRepo().GetFullName()
-		a.repoInstallations.Store(repoFullName, installationID)
+		a.vcsProvider.TrackInstallation(repoFullName, installationID)
 
 		if err := a.handlePRReviewComment(ctx, e, installationID, handler); err != nil {
 			slog.Error("error handling PR review comment event", "error", err)
@@ -167,7 +171,7 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 	case *gh.PullRequestReviewEvent:
 		installationID := e.GetInstallation().GetID()
 		repoFullName := e.GetRepo().GetFullName()
-		a.repoInstallations.Store(repoFullName, installationID)
+		a.vcsProvider.TrackInstallation(repoFullName, installationID)
 
 		if err := a.handlePRReview(ctx, e, installationID, handler); err != nil {
 			slog.Error("error handling PR review event", "error", err)
@@ -226,6 +230,7 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 		UserID:     userLogin,
 		Content:    content,
 		Metadata: map[string]string{
+			"vcs":             a.Name(),
 			"type":            "issue_comment",
 			"repo":            repoFullName,
 			"issue_num":       strconv.Itoa(issueNum),
@@ -276,6 +281,7 @@ func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestRe
 		UserID:     userLogin,
 		Content:    content,
 		Metadata: map[string]string{
+			"vcs":             a.Name(),
 			"type":            "review_comment",
 			"repo":            repoFullName,
 			"issue_num":       strconv.Itoa(prNum),
@@ -332,6 +338,7 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 		UserID:     userLogin,
 		Content:    content,
 		Metadata: map[string]string{
+			"vcs":             a.Name(),
 			"type":            "review",
 			"repo":            repoFullName,
 			"issue_num":       strconv.Itoa(prNum),
@@ -348,12 +355,12 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 
 func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, message string) error {
 	g := ParseRef(ref)
-	owner, repo, err := splitRepo(g.Repo)
+	owner, repo, err := vcsgithub.SplitRepo(g.Repo)
 	if err != nil {
 		return err
 	}
 
-	client, err := a.getClientForRepo(g.Repo)
+	client, err := a.getClientForRepo(ctx, g.Repo)
 	if err != nil {
 		return err
 	}
@@ -383,12 +390,12 @@ func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error 
 		return nil
 	}
 
-	owner, repo, err := splitRepo(g.Repo)
+	owner, repo, err := vcsgithub.SplitRepo(g.Repo)
 	if err != nil {
 		return err
 	}
 
-	client, err := a.getClientForRepo(g.Repo)
+	client, err := a.getClientForRepo(ctx, g.Repo)
 	if err != nil {
 		return err
 	}
@@ -406,35 +413,9 @@ func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error 
 	return nil
 }
 
-func (a *Adapter) CreateInstallationTokenForRepo(ctx context.Context, fullRepo string) (string, error) {
-	v, ok := a.repoInstallations.Load(fullRepo)
-	if !ok {
-		return "", fmt.Errorf("no installation ID known for repo %q", fullRepo)
-	}
-	installationID := v.(int64)
-
-	_, repoName, err := splitRepo(fullRepo)
-	if err != nil {
-		return "", err
-	}
-
-	appClient := gh.NewClient(&http.Client{Transport: a.appsTransport})
-	token, _, err := appClient.Apps.CreateInstallationToken(ctx, installationID, &gh.InstallationTokenOptions{
-		Repositories: []string{repoName},
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to create installation token: %w", err)
-	}
-
-	return token.GetToken(), nil
-}
-
-func splitRepo(fullName string) (owner, repo string, err error) {
-	parts := strings.SplitN(fullName, "/", 2)
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid repo format %q: expected owner/repo", fullName)
-	}
-	return parts[0], parts[1], nil
+// VCSProvider returns the VCS provider for GitHub, for registration in the VCS registry.
+func (a *Adapter) VCSProvider() vcs.Provider {
+	return a.vcsProvider
 }
 
 // Ensure Adapter implements adapter.Adapter at compile time.

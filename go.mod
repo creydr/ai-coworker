@@ -15,6 +15,7 @@ require (
 	github.com/knadh/koanf/v2 v2.3.4
 	github.com/openai/openai-go v1.12.0
 	github.com/slack-go/slack v0.23.0
+	golang.org/x/sync v0.20.0
 	k8s.io/api v0.36.0
 	k8s.io/apimachinery v0.36.0
 	k8s.io/client-go v0.36.0
@@ -94,7 +95,6 @@ require (
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
