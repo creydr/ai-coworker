@@ -70,7 +70,9 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 		}
 	}
 
-	// Tier 2: extract repo URLs from message content + thread history
+	// Tier 2: extract repo URLs from message content + thread history.
+	// This enables non-VCS adapters (e.g. Slack) to trigger code tasks
+	// when the user pastes a repo URL in their message.
 	var allMatches []vcs.RepoMatch
 	if e.vcsRegistry != nil {
 		if execCtx.Task != nil {
@@ -95,7 +97,8 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 		envVars[k] = v
 	}
 
-	// Collect tokens for all involved providers.
+	// Collect tokens for all involved providers so the sandbox can access
+	// repos across multiple VCS platforms in a single session.
 	if e.vcsRegistry != nil {
 		seen := map[string]bool{}
 		var credURLs []string

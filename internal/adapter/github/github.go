@@ -147,6 +147,8 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 	case *gh.IssueCommentEvent:
 		installationID := e.GetInstallation().GetID()
 		repoFullName := e.GetRepo().GetFullName()
+		// Cache the installation ID from the webhook so the VCS provider can
+		// create scoped tokens later without an extra API round-trip.
 		a.vcsProvider.TrackInstallation(repoFullName, installationID)
 
 		if err := a.handleIssueComment(ctx, e, installationID, handler); err != nil {
