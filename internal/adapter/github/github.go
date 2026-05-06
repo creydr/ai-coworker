@@ -228,7 +228,7 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 		UserID:     userLogin,
 		Content:    content,
 		Metadata: map[string]string{
-			"vcs":             "github",
+			"vcs":             a.Name(),
 			"type":            "issue_comment",
 			"repo":            repoFullName,
 			"issue_num":       strconv.Itoa(issueNum),
@@ -279,7 +279,7 @@ func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestRe
 		UserID:     userLogin,
 		Content:    content,
 		Metadata: map[string]string{
-			"vcs":             "github",
+			"vcs":             a.Name(),
 			"type":            "review_comment",
 			"repo":            repoFullName,
 			"issue_num":       strconv.Itoa(prNum),
@@ -336,7 +336,7 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 		UserID:     userLogin,
 		Content:    content,
 		Metadata: map[string]string{
-			"vcs":             "github",
+			"vcs":             a.Name(),
 			"type":            "review",
 			"repo":            repoFullName,
 			"issue_num":       strconv.Itoa(prNum),
