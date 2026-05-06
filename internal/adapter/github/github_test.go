@@ -118,6 +118,20 @@ func signPayload(secret, payload []byte) string {
 // issueCommentPayload builds a minimal IssueCommentEvent JSON body.
 func issueCommentPayload(t *testing.T, body, repoFullName, login string, issueNum int, commentID, installationID int64, isPR bool) []byte {
 	t.Helper()
+	return issueCommentPayloadWithAuthor(t, body, repoFullName, login, "", issueNum, commentID, installationID, isPR)
+}
+
+func issueCommentPayloadWithAuthor(t *testing.T, body, repoFullName, login, issueAuthor string, issueNum int, commentID, installationID int64, isPR bool) []byte {
+	t.Helper()
+
+	issue := map[string]interface{}{
+		"number": issueNum,
+	}
+	if issueAuthor != "" {
+		issue["user"] = map[string]interface{}{
+			"login": issueAuthor,
+		}
+	}
 
 	event := map[string]interface{}{
 		"action": "created",
@@ -131,16 +145,14 @@ func issueCommentPayload(t *testing.T, body, repoFullName, login string, issueNu
 		"repository": map[string]interface{}{
 			"full_name": repoFullName,
 		},
-		"issue": map[string]interface{}{
-			"number": issueNum,
-		},
+		"issue": issue,
 		"installation": map[string]interface{}{
 			"id": installationID,
 		},
 	}
 
 	if isPR {
-		event["issue"].(map[string]interface{})["pull_request"] = map[string]interface{}{
+		issue["pull_request"] = map[string]interface{}{
 			"url": "https://api.github.com/repos/" + repoFullName + "/pulls/" + fmt.Sprint(issueNum),
 		}
 	}
@@ -664,5 +676,62 @@ func TestHandleIssueComment_EmptyAllowlistBlocksAll(t *testing.T) {
 
 	if handlerCalled {
 		t.Fatal("handler should not be called when allowlist is empty")
+	}
+}
+
+func TestHandleIssueComment_BotCreatedPR_NoMention(t *testing.T) {
+	const secret = "test-secret"
+	a := newTestAdapter(t, secret, "ai-coworker")
+
+	var received domain.IncomingEvent
+	handlerCalled := false
+	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+		handlerCalled = true
+		received = ev
+		return nil
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
+		a.handleWebhook(r.Context(), w, r, handler)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	payload := issueCommentPayloadWithAuthor(t, "Please fix the tests", "org/repo", "reviewer", "ai-coworker[bot]", 5, 222, 77777, true)
+	resp := sendWebhook(t, ts, "issue_comment", payload, secret)
+	_ = resp.Body.Close()
+
+	if !handlerCalled {
+		t.Fatal("handler should be called for comments on bot-created PRs without mention")
+	}
+	if received.Content != "Please fix the tests" {
+		t.Errorf("Content = %q, want %q", received.Content, "Please fix the tests")
+	}
+}
+
+func TestHandleIssueComment_NotBotPR_NoMention_Ignored(t *testing.T) {
+	const secret = "test-secret"
+	a := newTestAdapter(t, secret, "ai-coworker")
+
+	handlerCalled := false
+	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+		handlerCalled = true
+		return nil
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
+		a.handleWebhook(r.Context(), w, r, handler)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	payload := issueCommentPayloadWithAuthor(t, "Please fix the tests", "org/repo", "reviewer", "someone-else", 5, 222, 77777, true)
+	resp := sendWebhook(t, ts, "issue_comment", payload, secret)
+	_ = resp.Body.Close()
+
+	if handlerCalled {
+		t.Fatal("handler should not be called for comments on non-bot PRs without mention")
 	}
 }
