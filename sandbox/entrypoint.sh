@@ -2,9 +2,6 @@
 if [ -n "${VCS_CREDENTIAL_URLS}" ]; then
   printf '%s\n' "${VCS_CREDENTIAL_URLS}" > ~/.git-credentials
   git config --global credential.helper store
-elif [ -n "${GITHUB_TOKEN}" ]; then
-  echo "https://x-access-token:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
-  git config --global credential.helper store
 fi
 if [ -n "${GITHUB_TOKEN}" ]; then
   echo "${GITHUB_TOKEN}" | gh auth login --with-token 2>/dev/null || true
