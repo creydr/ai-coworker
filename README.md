@@ -30,25 +30,36 @@ To use the GitHub handler, you'll need a [GitHub App](#github-app-setup). For th
 
 ## GitHub App Setup
 
-1. Go to **Settings > Developer settings > GitHub Apps > New GitHub App**.
-2. Fill in the basics:
-   - **Name:** your app name (e.g. `my-ai-coworker`)
-   - **Homepage URL:** any URL
+1. **[Create the GitHub App](https://github.com/settings/apps/new?name=my-ai-coworker&url=https://github.com/creydr/ai-coworker&description=Autonomous+AI+agent+for+software+development+tasks&public=false&webhook_active=true&contents=write&issues=write&pull_requests=write&metadata=read&events[]=issue_comment&events[]=pull_request_review&events[]=pull_request_review_comment)** — this link pre-fills the required permissions and events. Fill in:
    - **Webhook URL:** your server's public URL + `/webhook/github` (can be configured later)
-   - **Webhook secret:** generate a random secret (e.g. via `openssl rand -hex 32`)
-3. Set permissions:
-   - **Repository permissions:**
-     - Contents: Read & write
-     - Issues: Read & write
-     - Pull requests: Read & write
-     - Metadata: Read-only
-4. Subscribe to events:
-   - Issue comment
-   - Pull request review
-   - Pull request review comment
-5. Create the app, then generate a private key from the app settings page (under **Private keys > Generate a private key**). Your browser will download a `.pem` file — store it securely.
-6. Install the app on the repositories you want it to monitor.
-7. Add the GitHub settings to your `config.yaml`:
+   - **Webhook secret:** generate one via `openssl rand -hex 32`
+
+   <details>
+   <summary>Manual setup (GitHub Enterprise or custom configuration)</summary>
+
+   1. Go to **Settings > Developer settings > GitHub Apps > New GitHub App**.
+   2. Fill in the basics:
+      - **Name:** your app name (e.g. `my-ai-coworker`)
+      - **Homepage URL:** any URL
+      - **Webhook URL:** your server's public URL + `/webhook/github`
+      - **Webhook secret:** generate a random secret (e.g. via `openssl rand -hex 32`)
+   3. Set permissions:
+      - **Repository permissions:**
+        - Contents: Read & write
+        - Issues: Read & write
+        - Pull requests: Read & write
+        - Metadata: Read-only
+   4. Subscribe to events:
+      - Issue comment
+      - Pull request review
+      - Pull request review comment
+   5. Create the app.
+
+   </details>
+
+2. Generate a private key from the app settings page (**Private keys > Generate a private key**). Your browser will download a `.pem` file — store it securely.
+3. Install the app on the repositories you want it to monitor.
+4. Add the GitHub settings to your `config.yaml`:
    ```yaml
    github:
      enabled: true
