@@ -48,20 +48,29 @@ To use the GitHub handler, you'll need a [GitHub App](#github-app-setup). For th
    - Pull request review comment
 5. Create the app, then generate a private key from the app settings page (under **Private keys > Generate a private key**). Your browser will download a `.pem` file — store it securely.
 6. Install the app on the repositories you want it to monitor.
-7. Set the environment variables:
-   ```sh
-   export AI_COWORKER__GITHUB__ENABLED=true
-   export AI_COWORKER__GITHUB__APP_ID=<your-app-id>
-   export AI_COWORKER__GITHUB__PRIVATE_KEY="$(cat path/to/private-key.pem)"
-   export AI_COWORKER__GITHUB__WEBHOOK_SECRET=<your-webhook-secret>
-   export AI_COWORKER__GITHUB__BOT_USERNAME=<your-app-name>
-   export AI_COWORKER__GITHUB__ALLOWED_USERS=user1,user2
+7. Add the GitHub settings to your `config.yaml`:
+   ```yaml
+   github:
+     enabled: true
+     app_id: 12345
+     bot_username: "my-ai-coworker"
+     allowed_users:
+       - "user1"
+       - "user2"
    ```
 
-   `ALLOWED_USERS` controls which GitHub users can trigger the bot:
-   - **Comma-separated list** (e.g. `user1,user2`): only those users can interact with the bot
-   - **`*`**: all users are allowed
+   Set secrets via environment variables:
+   ```sh
+   export AI_COWORKER__GITHUB__PRIVATE_KEY="$(cat path/to/private-key.pem)"
+   export AI_COWORKER__GITHUB__WEBHOOK_SECRET=<your-webhook-secret>
+   ```
+
+   `allowed_users` controls which GitHub users can trigger the bot:
+   - **List of usernames** (e.g. `["user1", "user2"]`): only those users can interact with the bot
+   - **`["*"]`**: all users are allowed
    - **Empty / unset**: nobody is allowed (secure by default)
+
+All settings can also be provided purely via environment variables — see [docs/deployment.md](docs/deployment.md#environment-variables) for the full reference.
 
 The webhook server listens on port 8080. For local development, use a tool like [smee.io](https://smee.io) or [ngrok](https://ngrok.com) to expose it.
 
@@ -78,12 +87,19 @@ The webhook server listens on port 8080. For local development, use a tool like 
    - `chat:write`
    - `reactions:write`
 5. Install the app to your workspace and copy the bot token.
-6. Set the environment variables:
+6. Add the Slack settings to your `config.yaml`:
+   ```yaml
+   slack:
+     enabled: true
+   ```
+
+   Set secrets via environment variables:
    ```sh
-   export AI_COWORKER__SLACK__ENABLED=true
    export AI_COWORKER__SLACK__APP_TOKEN=xapp-...
    export AI_COWORKER__SLACK__BOT_TOKEN=xoxb-...
    ```
+
+All settings can also be provided purely via environment variables — see [docs/deployment.md](docs/deployment.md#environment-variables) for the full reference.
 
 ## Usage
 
