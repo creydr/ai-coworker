@@ -22,62 +22,6 @@ import (
 	"github.com/creydr/ai-coworker/internal/domain"
 )
 
-func TestSplitRepo(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		wantOwner string
-		wantRepo  string
-		wantErr   bool
-	}{
-		{
-			name:      "valid owner/repo",
-			input:     "owner/repo",
-			wantOwner: "owner",
-			wantRepo:  "repo",
-			wantErr:   false,
-		},
-		{
-			name:      "valid with nested path",
-			input:     "my-org/my-repo",
-			wantOwner: "my-org",
-			wantRepo:  "my-repo",
-			wantErr:   false,
-		},
-		{
-			name:    "no slash",
-			input:   "noslash",
-			wantErr: true,
-		},
-		{
-			name:    "empty string",
-			input:   "",
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			owner, repo, err := splitRepo(tt.input)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("splitRepo(%q) expected error, got nil", tt.input)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("splitRepo(%q) unexpected error: %v", tt.input, err)
-			}
-			if owner != tt.wantOwner {
-				t.Errorf("splitRepo(%q) owner = %q, want %q", tt.input, owner, tt.wantOwner)
-			}
-			if repo != tt.wantRepo {
-				t.Errorf("splitRepo(%q) repo = %q, want %q", tt.input, repo, tt.wantRepo)
-			}
-		})
-	}
-}
-
 // generateTestPEMKey generates a PEM-encoded RSA private key for testing.
 func generateTestPEMKey(t *testing.T) []byte {
 	t.Helper()
@@ -249,6 +193,7 @@ func TestHandleIssueComment(t *testing.T) {
 
 	// Metadata checks.
 	wantMeta := map[string]string{
+		"vcs":             "github",
 		"type":            "issue_comment",
 		"repo":            repoFullName,
 		"issue_num":       "42",
@@ -473,6 +418,9 @@ func TestHandlePRReviewComment_WithMention(t *testing.T) {
 	if captured.ChannelRef.Properties["comment_id"] != "88888" {
 		t.Errorf("Properties[comment_id] = %q, want %q", captured.ChannelRef.Properties["comment_id"], "88888")
 	}
+	if captured.Metadata["vcs"] != "github" {
+		t.Errorf("Metadata[vcs] = %q, want %q", captured.Metadata["vcs"], "github")
+	}
 	if captured.Metadata["pr_branch"] != "feat/branch" {
 		t.Errorf("Metadata[pr_branch] = %q, want %q", captured.Metadata["pr_branch"], "feat/branch")
 	}
@@ -540,6 +488,9 @@ func TestHandlePRReview_WithMention(t *testing.T) {
 	}
 	if captured.Content != "please fix these issues" {
 		t.Errorf("Content = %q, want %q", captured.Content, "please fix these issues")
+	}
+	if captured.Metadata["vcs"] != "github" {
+		t.Errorf("Metadata[vcs] = %q, want %q", captured.Metadata["vcs"], "github")
 	}
 	if captured.Metadata["pr_branch"] != "feat/fix" {
 		t.Errorf("Metadata[pr_branch] = %q, want %q", captured.Metadata["pr_branch"], "feat/fix")

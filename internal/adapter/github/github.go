@@ -87,7 +87,7 @@ func (a *Adapter) isUserAllowed(username string) bool {
 
 func (a *Adapter) denyUnauthorized(ctx context.Context, installationID int64, repoFullName string, issueNum int, body string) {
 	client := a.getInstallationClient(installationID)
-	owner, repo, err := splitRepo(repoFullName)
+	owner, repo, err := vcsgithub.SplitRepo(repoFullName)
 	if err != nil {
 		slog.Error("error splitting repo for denial response", "error", err)
 		return
@@ -353,7 +353,7 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 
 func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, message string) error {
 	g := ParseRef(ref)
-	owner, repo, err := splitRepo(g.Repo)
+	owner, repo, err := vcsgithub.SplitRepo(g.Repo)
 	if err != nil {
 		return err
 	}
@@ -388,7 +388,7 @@ func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error 
 		return nil
 	}
 
-	owner, repo, err := splitRepo(g.Repo)
+	owner, repo, err := vcsgithub.SplitRepo(g.Repo)
 	if err != nil {
 		return err
 	}
@@ -414,14 +414,6 @@ func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error 
 // VCSProvider returns the VCS provider for GitHub, for registration in the VCS registry.
 func (a *Adapter) VCSProvider() vcs.Provider {
 	return a.vcsProvider
-}
-
-func splitRepo(fullName string) (owner, repo string, err error) {
-	parts := strings.SplitN(fullName, "/", 2)
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid repo format %q: expected owner/repo", fullName)
-	}
-	return parts[0], parts[1], nil
 }
 
 // Ensure Adapter implements adapter.Adapter at compile time.

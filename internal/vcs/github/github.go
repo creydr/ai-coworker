@@ -10,6 +10,7 @@ import (
 
 	ghinstallation "github.com/bradleyfalzon/ghinstallation/v2"
 	gh "github.com/google/go-github/v68/github"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/creydr/ai-coworker/internal/vcs"
 )
@@ -20,6 +21,7 @@ var _ vcs.Provider = (*Provider)(nil)
 type Provider struct {
 	appsTransport     *ghinstallation.AppsTransport
 	repoInstallations sync.Map
+	discoverGroup     singleflight.Group
 }
 
 // New creates a new GitHub VCS provider.
@@ -53,7 +55,7 @@ func (p *Provider) CreateTokenForRepo(ctx context.Context, fullRepo string) (str
 		return "", err
 	}
 
-	_, repoName, err := splitRepo(fullRepo)
+	_, repoName, err := SplitRepo(fullRepo)
 	if err != nil {
 		return "", err
 	}
@@ -90,11 +92,17 @@ func (p *Provider) GetInstallationID(ctx context.Context, repo string) (int64, e
 	if v, ok := p.repoInstallations.Load(repo); ok {
 		return v.(int64), nil
 	}
-	return p.discoverInstallation(ctx, repo)
+	v, err, _ := p.discoverGroup.Do(repo, func() (interface{}, error) {
+		return p.discoverInstallation(ctx, repo)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return v.(int64), nil
 }
 
 func (p *Provider) discoverInstallation(ctx context.Context, fullRepo string) (int64, error) {
-	owner, repo, err := splitRepo(fullRepo)
+	owner, repo, err := SplitRepo(fullRepo)
 	if err != nil {
 		return 0, err
 	}
@@ -108,7 +116,7 @@ func (p *Provider) discoverInstallation(ctx context.Context, fullRepo string) (i
 	return id, nil
 }
 
-func splitRepo(fullName string) (owner, repo string, err error) {
+func SplitRepo(fullName string) (owner, repo string, err error) {
 	parts := strings.SplitN(fullName, "/", 2)
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("invalid repo format %q: expected owner/repo", fullName)

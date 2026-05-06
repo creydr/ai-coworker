@@ -82,13 +82,13 @@ func TestSplitRepo(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		owner, repo, err := splitRepo(tt.input)
+		owner, repo, err := SplitRepo(tt.input)
 		if (err != nil) != tt.wantErr {
-			t.Errorf("splitRepo(%q): err = %v, wantErr = %v", tt.input, err, tt.wantErr)
+			t.Errorf("SplitRepo(%q): err = %v, wantErr = %v", tt.input, err, tt.wantErr)
 			continue
 		}
 		if owner != tt.wantOwner || repo != tt.wantRepo {
-			t.Errorf("splitRepo(%q) = (%q, %q), want (%q, %q)", tt.input, owner, repo, tt.wantOwner, tt.wantRepo)
+			t.Errorf("SplitRepo(%q) = (%q, %q), want (%q, %q)", tt.input, owner, repo, tt.wantOwner, tt.wantRepo)
 		}
 	}
 }
