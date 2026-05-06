@@ -591,6 +591,98 @@ func TestWorker_BatchedReviewFallback(t *testing.T) {
 	}
 }
 
+func TestWorker_ReviewAbsorbsSiblings(t *testing.T) {
+	ms := newMockStore()
+	adapter := &mockAdapter{name: "github"}
+	router := NewRouter(ms)
+	router.RegisterAdapter(adapter)
+
+	codeExec := &mockExecutor{
+		result: &executor.Result{
+			Response: "--- COMMENT 1 ---\nReview body addressed.\n\n--- COMMENT 2 ---\nInline comment fixed.",
+		},
+	}
+	llmExec := &mockExecutor{
+		result: &executor.Result{Response: "llm"},
+	}
+	classifier := NewIntentClassifier(&mockLLMProvider{response: "review"})
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+
+	thread := &domain.Thread{
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#5",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "5",
+			},
+		},
+		Status: domain.ThreadActive,
+	}
+	ms.threads["thread-1"] = thread
+
+	siblingTask := &domain.Task{
+		ID:       "task-2",
+		ThreadID: "thread-1",
+		Status:   domain.TaskPending,
+		Input:    "fix the inline issue",
+		Metadata: map[string]string{
+			"type":       "review_comment",
+			"comment_id": "201",
+			"repo":       "org/repo",
+			"issue_num":  "5",
+			"is_pr":      "true",
+		},
+	}
+
+	ms.claimPendingTasksFunc = func(_ context.Context, threadID, _ string) ([]*domain.Task, error) {
+		if threadID == "thread-1" {
+			siblingTask.Status = domain.TaskInProgress
+			return []*domain.Task{siblingTask}, nil
+		}
+		return nil, nil
+	}
+
+	primaryTask := &domain.Task{
+		ID:       "task-1",
+		ThreadID: "thread-1",
+		Status:   domain.TaskInProgress,
+		Input:    "review body comment",
+		Metadata: map[string]string{
+			"type":         "review",
+			"review_state": "changes_requested",
+			"comment_id":   "200",
+			"repo":         "org/repo",
+			"issue_num":    "5",
+			"is_pr":        "true",
+		},
+	}
+
+	wp.processTask(context.Background(), "worker-0", primaryTask)
+
+	if codeExec.capturedCtx == nil {
+		t.Fatal("code executor was not called")
+	}
+	if !strings.Contains(codeExec.capturedCtx.Task.Input, "multiple comments") {
+		t.Error("merged input should mention multiple comments")
+	}
+
+	if len(adapter.responseCalls) != 2 {
+		t.Fatalf("expected 2 response calls (primary + sibling), got %d", len(adapter.responseCalls))
+	}
+	if !strings.Contains(adapter.responseCalls[0].Message, "Review body addressed.") {
+		t.Errorf("response 0 = %q, want review body response", adapter.responseCalls[0].Message)
+	}
+	if !strings.Contains(adapter.responseCalls[1].Message, "Inline comment fixed.") {
+		t.Errorf("response 1 = %q, want inline comment response", adapter.responseCalls[1].Message)
+	}
+
+	if siblingTask.Status != domain.TaskCompleted {
+		t.Errorf("sibling task status = %q, want completed", siblingTask.Status)
+	}
+}
+
 func TestWorker_TaskStatusUpdated(t *testing.T) {
 	ms, _, _, _, wp := newWorkerTestSetup()
 
