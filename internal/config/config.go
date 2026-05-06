@@ -43,45 +43,45 @@ type DatabaseConfig struct {
 
 type LLMConfig struct {
 	Provider string       `koanf:"provider"`
-	APIKey   string       `koanf:"api_key"`
+	APIKey   string       `koanf:"apiKey"`
 	Model    string       `koanf:"model"`
 	Vertex   VertexConfig `koanf:"vertex"`
 	OpenAI   OpenAIConfig `koanf:"openai"`
 }
 
 type OpenAIConfig struct {
-	BaseURL string `koanf:"base_url"`
+	BaseURL string `koanf:"baseUrl"`
 }
 
 type VertexConfig struct {
-	ProjectID string `koanf:"project_id"`
+	ProjectID string `koanf:"projectId"`
 	Region    string `koanf:"region"`
 }
 
 type SlackConfig struct {
 	Enabled  bool   `koanf:"enabled"`
-	AppToken string `koanf:"app_token"`
-	BotToken string `koanf:"bot_token"`
+	AppToken string `koanf:"appToken"`
+	BotToken string `koanf:"botToken"`
 }
 
 type GitHubConfig struct {
 	Enabled       bool     `koanf:"enabled"`
-	AppID         int64    `koanf:"app_id"`
-	PrivateKey    string   `koanf:"private_key"`
-	WebhookSecret string   `koanf:"webhook_secret"`
-	BotUsername   string   `koanf:"bot_username"`
-	AllowedUsers  []string `koanf:"allowed_users"`
-	ListenAddr    string   `koanf:"listen_addr"`
+	AppID         int64    `koanf:"appId"`
+	PrivateKey    string   `koanf:"privateKey"`
+	WebhookSecret string   `koanf:"webhookSecret"`
+	BotUsername   string   `koanf:"botUsername"`
+	AllowedUsers  []string `koanf:"allowedUsers"`
+	ListenAddr    string   `koanf:"listenAddr"`
 }
 
 type SandboxConfig struct {
 	Runtime        string `koanf:"runtime"`
 	Image          string `koanf:"image"`
-	TimeoutSeconds int    `koanf:"timeout_seconds"`
-	CPULimit       string `koanf:"cpu_limit"`
-	MemoryLimit    string `koanf:"memory_limit"`
+	TimeoutSeconds int    `koanf:"timeoutSeconds"`
+	CPULimit       string `koanf:"cpuLimit"`
+	MemoryLimit    string `koanf:"memoryLimit"`
 	Namespace      string `koanf:"namespace"`
-	ServiceAccount string `koanf:"service_account"`
+	ServiceAccount string `koanf:"serviceAccount"`
 }
 
 func Load(path string) (*Config, error) {
@@ -93,8 +93,11 @@ func Load(path string) (*Config, error) {
 
 	if err := k.Load(env.Provider("AI_COWORKER__", ".", func(s string) string {
 		key := strings.TrimPrefix(s, "AI_COWORKER__")
-		key = strings.ToLower(strings.ReplaceAll(key, "__", "."))
-		return key
+		parts := strings.Split(key, "__")
+		for i, p := range parts {
+			parts[i] = snakeToCamel(p)
+		}
+		return strings.Join(parts, ".")
 	}), nil); err != nil {
 		return nil, fmt.Errorf("loading env config: %w", err)
 	}
@@ -128,6 +131,17 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
+func snakeToCamel(s string) string {
+	s = strings.ToLower(s)
+	parts := strings.Split(s, "_")
+	for i := 1; i < len(parts); i++ {
+		if len(parts[i]) > 0 {
+			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
+
 func (c *Config) validate() error {
 	if c.Database.URL == "" {
 		return fmt.Errorf("database.url is required")
@@ -141,15 +155,15 @@ func (c *Config) validate() error {
 	switch c.LLM.Provider {
 	case "claude":
 		if c.LLM.APIKey == "" {
-			return fmt.Errorf("llm.api_key is required for claude provider")
+			return fmt.Errorf("llm.apiKey is required for claude provider")
 		}
 	case "vertex":
 		if c.LLM.Vertex.ProjectID == "" {
-			return fmt.Errorf("llm.vertex.project_id is required for vertex provider")
+			return fmt.Errorf("llm.vertex.projectId is required for vertex provider")
 		}
 	case "openai":
 		if c.LLM.OpenAI.BaseURL == "" {
-			return fmt.Errorf("llm.openai.base_url is required for openai provider")
+			return fmt.Errorf("llm.openai.baseUrl is required for openai provider")
 		}
 	}
 	switch c.Sandbox.Runtime {
@@ -162,21 +176,21 @@ func (c *Config) validate() error {
 	}
 	if c.GitHub.Enabled {
 		if c.GitHub.AppID == 0 {
-			return fmt.Errorf("github.app_id is required when github is enabled")
+			return fmt.Errorf("github.appId is required when github is enabled")
 		}
 		if c.GitHub.PrivateKey == "" {
-			return fmt.Errorf("github.private_key is required when github is enabled")
+			return fmt.Errorf("github.privateKey is required when github is enabled")
 		}
 		if c.GitHub.WebhookSecret == "" {
-			return fmt.Errorf("github.webhook_secret is required when github is enabled")
+			return fmt.Errorf("github.webhookSecret is required when github is enabled")
 		}
 	}
 	if c.Slack.Enabled {
 		if c.Slack.AppToken == "" {
-			return fmt.Errorf("slack.app_token is required when slack is enabled")
+			return fmt.Errorf("slack.appToken is required when slack is enabled")
 		}
 		if c.Slack.BotToken == "" {
-			return fmt.Errorf("slack.bot_token is required when slack is enabled")
+			return fmt.Errorf("slack.botToken is required when slack is enabled")
 		}
 	}
 	return nil

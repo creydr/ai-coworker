@@ -14,14 +14,14 @@ data:
     sandbox:
       runtime: "kubernetes"
       image: "quay.io/creydr/ai-coworker-sandbox:latest"
-      timeout_seconds: 600
-      cpu_limit: "2"
-      memory_limit: "2Gi"
+      timeoutSeconds: 600
+      cpuLimit: "2"
+      memoryLimit: "2Gi"
       namespace: "ai-coworker"
 
     github:
       enabled: false
-      listen_addr: ":8080"
+      listenAddr: ":8080"
 
     slack:
       enabled: false

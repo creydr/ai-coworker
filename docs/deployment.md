@@ -30,7 +30,7 @@ make sandbox-image
 
 ### 3. Configure
 
-All configuration can be provided via `config.yaml` or environment variables with the `AI_COWORKER__` prefix (double underscore). Use `__` to separate nested sections, single `_` within field names is preserved. Environment variables override the config file.
+All configuration can be provided via `config.yaml` or environment variables with the `AI_COWORKER__` prefix (double underscore). Use `__` to separate nested sections; single `_` within field names is converted to camelCase (e.g. `AI_COWORKER__GITHUB__BOT_USERNAME` maps to `github.botUsername`). Environment variables override the config file.
 
 The config file (`config.yaml`) ships with safe defaults for local development:
 
@@ -51,9 +51,9 @@ github:
 sandbox:
   runtime: "docker"
   image: "quay.io/creydr/ai-coworker-sandbox:latest"
-  timeout_seconds: 600
-  cpu_limit: "2"
-  memory_limit: "2Gi"
+  timeoutSeconds: 600
+  cpuLimit: "2"
+  memoryLimit: "2Gi"
 
 workers: 4
 ```
