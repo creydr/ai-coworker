@@ -9,43 +9,44 @@ import (
 	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/creydr/ai-coworker/internal/executor"
 	"github.com/creydr/ai-coworker/internal/sandbox"
+	"github.com/creydr/ai-coworker/internal/vcs"
 )
 
 // Executor runs tasks by invoking Claude Code inside a sandboxed container
 type Executor struct {
-	runtime         sandbox.Runtime
-	image           string
-	envVars         map[string]string
-	binds           []string
-	timeout         int
-	cpuLimit        string
-	memLimit        string
-	GitHubTokenFunc func(ctx context.Context, repo string) (string, error)
+	runtime     sandbox.Runtime
+	image       string
+	envVars     map[string]string
+	binds       []string
+	timeout     int
+	cpuLimit    string
+	memLimit    string
+	vcsRegistry *vcs.Registry
 }
 
 // Config holds the configuration for creating a Claude Code executor
 type Config struct {
-	Runtime         sandbox.Runtime
-	Image           string
-	EnvVars         map[string]string
-	Binds           []string
-	TimeoutSeconds  int
-	CPULimit        string
-	MemoryLimit     string
-	GitHubTokenFunc func(ctx context.Context, repo string) (string, error)
+	Runtime        sandbox.Runtime
+	Image          string
+	EnvVars        map[string]string
+	Binds          []string
+	TimeoutSeconds int
+	CPULimit       string
+	MemoryLimit    string
+	VCSRegistry    *vcs.Registry
 }
 
 // New creates a new Claude Code executor from the given configuration
 func New(cfg Config) *Executor {
 	return &Executor{
-		runtime:         cfg.Runtime,
-		image:           cfg.Image,
-		envVars:         cfg.EnvVars,
-		binds:           cfg.Binds,
-		timeout:         cfg.TimeoutSeconds,
-		cpuLimit:        cfg.CPULimit,
-		memLimit:        cfg.MemoryLimit,
-		GitHubTokenFunc: cfg.GitHubTokenFunc,
+		runtime:     cfg.Runtime,
+		image:       cfg.Image,
+		envVars:     cfg.EnvVars,
+		binds:       cfg.Binds,
+		timeout:     cfg.TimeoutSeconds,
+		cpuLimit:    cfg.CPULimit,
+		memLimit:    cfg.MemoryLimit,
+		vcsRegistry: cfg.VCSRegistry,
 	}
 }
 
@@ -55,12 +56,37 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 	cloneURL := ""
 	branch := ""
 	repo := ""
+	var primaryProvider vcs.Provider
+
 	if execCtx.Event != nil && execCtx.Event.Metadata != nil {
 		repo = execCtx.Event.Metadata["repo"]
-		if repo != "" {
-			cloneURL = fmt.Sprintf("https://github.com/%s.git", repo)
-		}
 		branch = execCtx.Event.Metadata["pr_branch"]
+
+		// Tier 1: event came from a VCS adapter — provider is known
+		if repo != "" {
+			if sourceVCS := execCtx.Event.Metadata["vcs"]; sourceVCS != "" && e.vcsRegistry != nil {
+				primaryProvider, _ = e.vcsRegistry.ByName(sourceVCS)
+			}
+		}
+	}
+
+	// Tier 2: extract repo URLs from message content + thread history
+	var allMatches []vcs.RepoMatch
+	if e.vcsRegistry != nil {
+		if execCtx.Task != nil {
+			allMatches = append(allMatches, e.vcsRegistry.ExtractReposFromText(execCtx.Task.Input)...)
+		}
+		for _, msg := range execCtx.Messages {
+			allMatches = append(allMatches, e.vcsRegistry.ExtractReposFromText(msg.Content)...)
+		}
+		if repo == "" && len(allMatches) > 0 {
+			repo = allMatches[0].Repo
+			primaryProvider = allMatches[0].Provider
+		}
+	}
+
+	if primaryProvider != nil && repo != "" {
+		cloneURL = primaryProvider.CloneURL(repo)
 	}
 
 	// Copy envVars so we don't mutate the shared map.
@@ -69,13 +95,40 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 		envVars[k] = v
 	}
 
-	// If a GitHub token function is configured and we have a repo, fetch a token.
-	if e.GitHubTokenFunc != nil && repo != "" {
-		token, err := e.GitHubTokenFunc(ctx, repo)
-		if err != nil {
-			slog.Warn("failed to get GitHub token for sandbox", "repo", repo, "error", err)
-		} else if token != "" {
-			envVars["GITHUB_TOKEN"] = token
+	// Collect tokens for all involved providers.
+	if e.vcsRegistry != nil {
+		seen := map[string]bool{}
+		var credURLs []string
+
+		if primaryProvider != nil && repo != "" {
+			token, err := primaryProvider.CreateTokenForRepo(ctx, repo)
+			if err != nil {
+				slog.Warn("failed to get VCS token for sandbox", "provider", primaryProvider.Name(), "repo", repo, "error", err)
+			} else if token != "" {
+				envVars[primaryProvider.TokenEnvVar()] = token
+				credURLs = append(credURLs, primaryProvider.CredentialURL(token))
+				seen[primaryProvider.Name()] = true
+			}
+		}
+
+		for _, match := range allMatches {
+			if seen[match.Provider.Name()] {
+				continue
+			}
+			seen[match.Provider.Name()] = true
+			token, err := match.Provider.CreateTokenForRepo(ctx, match.Repo)
+			if err != nil {
+				slog.Warn("failed to get VCS token for sandbox", "provider", match.Provider.Name(), "repo", match.Repo, "error", err)
+				continue
+			}
+			if token != "" {
+				envVars[match.Provider.TokenEnvVar()] = token
+				credURLs = append(credURLs, match.Provider.CredentialURL(token))
+			}
+		}
+
+		if len(credURLs) > 0 {
+			envVars["VCS_CREDENTIAL_URLS"] = strings.Join(credURLs, "\n")
 		}
 	}
 

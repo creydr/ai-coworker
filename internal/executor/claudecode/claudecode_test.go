@@ -9,6 +9,7 @@ import (
 	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/creydr/ai-coworker/internal/executor"
 	"github.com/creydr/ai-coworker/internal/sandbox"
+	"github.com/creydr/ai-coworker/internal/vcs"
 )
 
 // mockRuntime records the ExecRequest it received and returns a canned ExecResult.
@@ -21,6 +22,45 @@ type mockRuntime struct {
 func (m *mockRuntime) Exec(_ context.Context, req sandbox.ExecRequest) (*sandbox.ExecResult, error) {
 	m.request = req
 	return m.result, m.err
+}
+
+type mockVCSProvider struct {
+	name     string
+	token    string
+	tokenErr error
+}
+
+func (m *mockVCSProvider) Name() string { return m.name }
+func (m *mockVCSProvider) CreateTokenForRepo(_ context.Context, _ string) (string, error) {
+	return m.token, m.tokenErr
+}
+func (m *mockVCSProvider) CloneURL(repo string) string {
+	return fmt.Sprintf("https://%s.example.com/%s.git", m.name, repo)
+}
+func (m *mockVCSProvider) TokenEnvVar() string {
+	return strings.ToUpper(m.name) + "_TOKEN"
+}
+func (m *mockVCSProvider) CredentialURL(token string) string {
+	return fmt.Sprintf("https://x-access-token:%s@%s.example.com", token, m.name)
+}
+func (m *mockVCSProvider) ParseRepoFromURL(rawURL string) (string, bool) {
+	prefix := fmt.Sprintf("https://%s.example.com/", m.name)
+	if strings.HasPrefix(rawURL, prefix) {
+		path := strings.TrimPrefix(rawURL, prefix)
+		parts := strings.SplitN(path, "/", 3)
+		if len(parts) >= 2 {
+			return parts[0] + "/" + parts[1], true
+		}
+	}
+	return "", false
+}
+
+func newTestRegistry(providers ...*mockVCSProvider) *vcs.Registry {
+	r := vcs.NewRegistry()
+	for _, p := range providers {
+		r.Register(p)
+	}
+	return r
 }
 
 func newTestContext() *executor.Context {
@@ -39,6 +79,7 @@ func newTestContext() *executor.Context {
 		},
 		Event: &domain.IncomingEvent{
 			Metadata: map[string]string{
+				"vcs":       "github",
 				"repo":      "octocat/hello-world",
 				"issue_num": "42",
 			},
@@ -54,6 +95,8 @@ func TestExecute_Success(t *testing.T) {
 		},
 	}
 
+	ghProvider := &mockVCSProvider{name: "github", token: "ghs_test123"}
+
 	e := New(Config{
 		Runtime:        mock,
 		Image:          "ghcr.io/ai-coworker:latest",
@@ -61,6 +104,7 @@ func TestExecute_Success(t *testing.T) {
 		TimeoutSeconds: 300,
 		CPULimit:       "2",
 		MemoryLimit:    "4g",
+		VCSRegistry:    newTestRegistry(ghProvider),
 	})
 
 	execCtx := newTestContext()
@@ -69,18 +113,15 @@ func TestExecute_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify the sandbox was called with the correct image.
 	if mock.request.Image != "ghcr.io/ai-coworker:latest" {
 		t.Errorf("expected image %q, got %q", "ghcr.io/ai-coworker:latest", mock.request.Image)
 	}
 
-	// Verify CloneURL was constructed correctly.
-	expectedCloneURL := "https://github.com/octocat/hello-world.git"
+	expectedCloneURL := "https://github.example.com/octocat/hello-world.git"
 	if mock.request.CloneURL != expectedCloneURL {
 		t.Errorf("expected CloneURL %q, got %q", expectedCloneURL, mock.request.CloneURL)
 	}
 
-	// Verify the prompt contains the repo name and task input.
 	if !strings.Contains(mock.request.Prompt, "octocat/hello-world") {
 		t.Errorf("prompt should contain repo name, got: %s", mock.request.Prompt)
 	}
@@ -88,18 +129,20 @@ func TestExecute_Success(t *testing.T) {
 		t.Errorf("prompt should contain task input, got: %s", mock.request.Prompt)
 	}
 
-	// Verify ANTHROPIC_API_KEY was passed in env vars.
 	if v, ok := mock.request.EnvVars["ANTHROPIC_API_KEY"]; !ok || v != "sk-test-key" {
 		t.Errorf("expected ANTHROPIC_API_KEY=sk-test-key in env vars, got: %v", mock.request.EnvVars)
 	}
 
-	// Verify the response matches the sandbox output.
+	if v, ok := mock.request.EnvVars["GITHUB_TOKEN"]; !ok || v != "ghs_test123" {
+		t.Errorf("expected GITHUB_TOKEN=ghs_test123 in env vars, got: %v", mock.request.EnvVars)
+	}
+
 	if result.Response != "Changes applied successfully" {
 		t.Errorf("expected response %q, got %q", "Changes applied successfully", result.Response)
 	}
 }
 
-func TestExecute_WithGitHubTokenFunc(t *testing.T) {
+func TestExecute_WithVCSRegistry(t *testing.T) {
 	mock := &mockRuntime{
 		result: &sandbox.ExecResult{
 			Output:   "done",
@@ -107,14 +150,14 @@ func TestExecute_WithGitHubTokenFunc(t *testing.T) {
 		},
 	}
 
+	ghProvider := &mockVCSProvider{name: "github", token: "ghs_test_token_123"}
+
 	e := New(Config{
 		Runtime:        mock,
 		Image:          "test-image",
 		EnvVars:        map[string]string{"ANTHROPIC_API_KEY": "sk-test"},
 		TimeoutSeconds: 60,
-		GitHubTokenFunc: func(_ context.Context, repo string) (string, error) {
-			return "ghs_test_token_123", nil
-		},
+		VCSRegistry:    newTestRegistry(ghProvider),
 	})
 
 	execCtx := newTestContext()
@@ -123,18 +166,20 @@ func TestExecute_WithGitHubTokenFunc(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify GITHUB_TOKEN appears in the env vars passed to the sandbox.
 	if v, ok := mock.request.EnvVars["GITHUB_TOKEN"]; !ok || v != "ghs_test_token_123" {
 		t.Errorf("expected GITHUB_TOKEN=ghs_test_token_123 in env vars, got: %v", mock.request.EnvVars)
 	}
 
-	// Also verify ANTHROPIC_API_KEY is still present.
 	if v, ok := mock.request.EnvVars["ANTHROPIC_API_KEY"]; !ok || v != "sk-test" {
 		t.Errorf("expected ANTHROPIC_API_KEY=sk-test in env vars, got: %v", mock.request.EnvVars)
 	}
+
+	if _, ok := mock.request.EnvVars["VCS_CREDENTIAL_URLS"]; !ok {
+		t.Error("expected VCS_CREDENTIAL_URLS in env vars")
+	}
 }
 
-func TestExecute_GitHubTokenFuncError(t *testing.T) {
+func TestExecute_VCSTokenError(t *testing.T) {
 	mock := &mockRuntime{
 		result: &sandbox.ExecResult{
 			Output:   "completed despite token error",
@@ -142,14 +187,17 @@ func TestExecute_GitHubTokenFuncError(t *testing.T) {
 		},
 	}
 
+	ghProvider := &mockVCSProvider{
+		name:     "github",
+		tokenErr: fmt.Errorf("token service unavailable"),
+	}
+
 	e := New(Config{
 		Runtime:        mock,
 		Image:          "test-image",
 		EnvVars:        map[string]string{"ANTHROPIC_API_KEY": "sk-test"},
 		TimeoutSeconds: 60,
-		GitHubTokenFunc: func(_ context.Context, repo string) (string, error) {
-			return "", fmt.Errorf("token service unavailable")
-		},
+		VCSRegistry:    newTestRegistry(ghProvider),
 	})
 
 	execCtx := newTestContext()
@@ -158,14 +206,56 @@ func TestExecute_GitHubTokenFuncError(t *testing.T) {
 		t.Fatalf("execution should proceed despite token error, got: %v", err)
 	}
 
-	// Verify GITHUB_TOKEN is NOT in env vars.
 	if _, ok := mock.request.EnvVars["GITHUB_TOKEN"]; ok {
-		t.Errorf("GITHUB_TOKEN should not be present when token func returns error, got: %v", mock.request.EnvVars)
+		t.Errorf("GITHUB_TOKEN should not be present when token creation fails, got: %v", mock.request.EnvVars)
 	}
 
-	// Verify execution still completed.
 	if result.Response != "completed despite token error" {
 		t.Errorf("expected response %q, got %q", "completed despite token error", result.Response)
+	}
+}
+
+func TestExecute_RepoFromMessageURL(t *testing.T) {
+	mock := &mockRuntime{
+		result: &sandbox.ExecResult{
+			Output:   "done",
+			ExitCode: 0,
+		},
+	}
+
+	ghProvider := &mockVCSProvider{name: "github", token: "ghs_from_url"}
+
+	e := New(Config{
+		Runtime:        mock,
+		Image:          "test-image",
+		EnvVars:        map[string]string{},
+		TimeoutSeconds: 60,
+		VCSRegistry:    newTestRegistry(ghProvider),
+	})
+
+	execCtx := &executor.Context{
+		Thread: &domain.Thread{ID: "t-1"},
+		Task: &domain.Task{
+			ID:    "task-1",
+			Input: "Fix the tests in https://github.example.com/org/repo",
+		},
+		Event: &domain.IncomingEvent{
+			Metadata: map[string]string{},
+		},
+	}
+
+	_, err := e.Execute(context.Background(), execCtx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expectedCloneURL := "https://github.example.com/org/repo.git"
+	if mock.request.CloneURL != expectedCloneURL {
+		t.Errorf("CloneURL = %q, want %q", mock.request.CloneURL, expectedCloneURL)
+	}
+
+	if v, ok := mock.request.EnvVars["GITHUB_TOKEN"]; !ok || v != "ghs_from_url" {
+		t.Errorf("expected GITHUB_TOKEN=ghs_from_url, got: %v", mock.request.EnvVars)
 	}
 }
 
@@ -208,11 +298,14 @@ func TestExecute_PRBranch(t *testing.T) {
 		},
 	}
 
+	ghProvider := &mockVCSProvider{name: "github", token: "ghs_pr_token"}
+
 	e := New(Config{
 		Runtime:        mock,
 		Image:          "test-image",
 		EnvVars:        map[string]string{},
 		TimeoutSeconds: 60,
+		VCSRegistry:    newTestRegistry(ghProvider),
 	})
 
 	execCtx := &executor.Context{
@@ -220,6 +313,7 @@ func TestExecute_PRBranch(t *testing.T) {
 		Task:   &domain.Task{ID: "task-1", Input: "fix the test"},
 		Event: &domain.IncomingEvent{
 			Metadata: map[string]string{
+				"vcs":       "github",
 				"repo":      "org/repo",
 				"is_pr":     "true",
 				"pr_branch": "feat/my-feature",
@@ -236,8 +330,10 @@ func TestExecute_PRBranch(t *testing.T) {
 	if mock.request.Branch != "feat/my-feature" {
 		t.Errorf("Branch = %q, want %q", mock.request.Branch, "feat/my-feature")
 	}
-	if mock.request.CloneURL != "https://github.com/org/repo.git" {
-		t.Errorf("CloneURL = %q, want %q", mock.request.CloneURL, "https://github.com/org/repo.git")
+
+	expectedCloneURL := "https://github.example.com/org/repo.git"
+	if mock.request.CloneURL != expectedCloneURL {
+		t.Errorf("CloneURL = %q, want %q", mock.request.CloneURL, expectedCloneURL)
 	}
 }
 

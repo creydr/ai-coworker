@@ -21,6 +21,7 @@ import (
 	"github.com/creydr/ai-coworker/internal/sandbox/docker"
 	k8ssandbox "github.com/creydr/ai-coworker/internal/sandbox/kubernetes"
 	"github.com/creydr/ai-coworker/internal/store"
+	"github.com/creydr/ai-coworker/internal/vcs"
 )
 
 func main() {
@@ -116,9 +117,9 @@ func main() {
 	}
 
 	// 9. Create Claude Code executor with sandbox runtime.
-	var githubTokenFunc func(ctx context.Context, repo string) (string, error)
+	vcsRegistry := vcs.NewRegistry()
 	if githubAdapter != nil {
-		githubTokenFunc = githubAdapter.CreateInstallationTokenForRepo
+		vcsRegistry.Register(githubAdapter.VCSProvider())
 	}
 	sandboxEnv := map[string]string{}
 	switch cfg.LLM.Provider {
@@ -141,13 +142,13 @@ func main() {
 		sandboxEnv["ANTHROPIC_API_KEY"] = cfg.LLM.APIKey
 	}
 	codeExec := claudecode.New(claudecode.Config{
-		Runtime:         sandboxRuntime,
-		Image:           cfg.Sandbox.Image,
-		EnvVars:         sandboxEnv,
-		TimeoutSeconds:  cfg.Sandbox.TimeoutSeconds,
-		CPULimit:        cfg.Sandbox.CPULimit,
-		MemoryLimit:     cfg.Sandbox.MemoryLimit,
-		GitHubTokenFunc: githubTokenFunc,
+		Runtime:        sandboxRuntime,
+		Image:          cfg.Sandbox.Image,
+		EnvVars:        sandboxEnv,
+		TimeoutSeconds: cfg.Sandbox.TimeoutSeconds,
+		CPULimit:       cfg.Sandbox.CPULimit,
+		MemoryLimit:    cfg.Sandbox.MemoryLimit,
+		VCSRegistry:    vcsRegistry,
 	})
 
 	// 10. Create LLM executor with the provider.
