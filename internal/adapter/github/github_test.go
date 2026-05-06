@@ -735,3 +735,29 @@ func TestHandleIssueComment_NotBotPR_NoMention_Ignored(t *testing.T) {
 		t.Fatal("handler should not be called for comments on non-bot PRs without mention")
 	}
 }
+
+func TestHandlePRReview_EmptyBody_Ignored(t *testing.T) {
+	const secret = "test-secret"
+	a := newTestAdapter(t, secret, "ai-coworker")
+
+	handlerCalled := false
+	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+		handlerCalled = true
+		return nil
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
+		a.handleWebhook(r.Context(), w, r, handler)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	payload := prReviewPayload(t, "", "org/repo", "reviewer", 3, 77777, "feat/fix", "commented")
+	resp := sendWebhook(t, ts, "pull_request_review", payload, secret)
+	_ = resp.Body.Close()
+
+	if handlerCalled {
+		t.Fatal("handler should not be called for PR reviews with empty body")
+	}
+}
