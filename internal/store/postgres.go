@@ -292,12 +292,20 @@ func (s *PostgresStore) CreateTask(ctx context.Context, t *domain.Task) error {
 }
 
 func (s *PostgresStore) ClaimNextTask(ctx context.Context, workerID string) (*domain.Task, error) {
+	// Skip pending tasks whose thread already has an in_progress task.
+	// This prevents multiple workers from claiming sibling review tasks
+	// concurrently, allowing the first worker to absorb them via ClaimPendingTasks.
 	row := s.pool.QueryRow(ctx,
 		`UPDATE tasks
 		 SET status = 'in_progress', worker_id = $1, updated_at = $2
 		 WHERE id = (
 		     SELECT id FROM tasks
 		     WHERE status = 'pending'
+		       AND NOT EXISTS (
+		           SELECT 1 FROM tasks t2
+		           WHERE t2.thread_id = tasks.thread_id
+		             AND t2.status = 'in_progress'
+		       )
 		     ORDER BY created_at
 		     LIMIT 1
 		     FOR UPDATE SKIP LOCKED
