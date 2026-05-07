@@ -10,6 +10,7 @@ import (
 type SlackRef struct {
 	ChannelID string
 	ThreadTS  string
+	MessageTS string
 }
 
 // NewRef creates a new Slack channel reference for the given channel and thread timestamp
@@ -33,5 +34,6 @@ func ParseRef(ref domain.ChannelRef) SlackRef {
 	return SlackRef{
 		ChannelID: ref.Properties["channel_id"],
 		ThreadTS:  ref.Properties["thread_ts"],
+		MessageTS: ref.Properties["message_ts"],
 	}
 }

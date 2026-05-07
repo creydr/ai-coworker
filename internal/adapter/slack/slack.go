@@ -77,8 +77,11 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 
 			threadID := fmt.Sprintf("slack-%s-%s", mentionEvent.Channel, threadTS)
 
+			ref := NewRef(mentionEvent.Channel, threadTS)
+			ref.Properties["message_ts"] = mentionEvent.TimeStamp
+
 			incomingEvent := domain.IncomingEvent{
-				ChannelRef: NewRef(mentionEvent.Channel, threadTS),
+				ChannelRef: ref,
 				ThreadID:   threadID,
 				UserID:     mentionEvent.User,
 				Content:    text,
@@ -109,9 +112,13 @@ func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, messa
 
 func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error {
 	s := ParseRef(ref)
+	ts := s.MessageTS
+	if ts == "" {
+		ts = s.ThreadTS
+	}
 	err := a.client.AddReactionContext(ctx, "eyes", slack.ItemRef{
 		Channel:   s.ChannelID,
-		Timestamp: s.ThreadTS,
+		Timestamp: ts,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add slack reaction: %w", err)
