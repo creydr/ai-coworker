@@ -84,7 +84,7 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 				Content:    text,
 			}
 
-			if err := handler(ctx, incomingEvent); err != nil {
+			if err := handler(ctx, []domain.IncomingEvent{incomingEvent}); err != nil {
 				slog.Error("error handling slack event", "error", err)
 			}
 		}

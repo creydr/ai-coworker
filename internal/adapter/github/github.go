@@ -158,15 +158,11 @@ func (a *Adapter) handleWebhook(ctx context.Context, w http.ResponseWriter, r *h
 		}
 
 	case *gh.PullRequestReviewCommentEvent:
-		installationID := e.GetInstallation().GetID()
-		repoFullName := e.GetRepo().GetFullName()
-		a.vcsProvider.TrackInstallation(repoFullName, installationID)
-
-		if err := a.handlePRReviewComment(ctx, e, installationID, handler); err != nil {
-			slog.Error("error handling PR review comment event", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
+		// Intentionally ignored. GitHub fires this webhook for each inline
+		// comment alongside the PullRequestReviewEvent. Processing both
+		// would create duplicate tasks. All review comment processing is
+		// handled in handlePRReview, which fetches the associated comments
+		// via the API — keeping a single entry point for review processing.
 
 	case *gh.PullRequestReviewEvent:
 		installationID := e.GetInstallation().GetID()
@@ -239,118 +235,122 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 		},
 	}
 
-	return handler(ctx, incoming)
+	return handler(ctx, []domain.IncomingEvent{incoming})
 }
 
-func (a *Adapter) handlePRReviewComment(ctx context.Context, e *gh.PullRequestReviewCommentEvent, installationID int64, handler adapter.EventHandler) error {
-	if e.GetAction() != "created" {
-		return nil
-	}
-
-	body := e.GetComment().GetBody()
-	mention := "@" + a.botUsername
-	mentioned := strings.Contains(body, mention)
-	isBotPR := a.isBotUser(e.GetPullRequest().GetUser().GetLogin())
-
-	if !mentioned && !isBotPR {
-		return nil
-	}
-
-	userLogin := e.GetComment().GetUser().GetLogin()
-	if a.isBotUser(userLogin) {
-		slog.Debug("ignoring own comment", "user", userLogin, "event", "pr_review_comment")
-		return nil
-	}
-	if !a.isUserAllowed(userLogin) {
-		slog.Info("unauthorized user", "user", userLogin, "event", "pr_review_comment")
-		repoFullName := e.GetRepo().GetFullName()
-		a.denyUnauthorized(ctx, installationID, repoFullName, e.GetPullRequest().GetNumber(), body)
-		return nil
-	}
-
-	content := strings.TrimSpace(strings.ReplaceAll(body, mention, ""))
-
-	repoFullName := e.GetRepo().GetFullName()
-	prNum := e.GetPullRequest().GetNumber()
-
-	ref := WithComment(NewRef(repoFullName, prNum), e.GetComment().GetID(), "review_comment")
-
-	incoming := domain.IncomingEvent{
-		ChannelRef: ref,
-		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, prNum),
-		UserID:     userLogin,
-		Content:    content,
-		Metadata: map[string]string{
-			"vcs":             a.Name(),
-			"type":            "review_comment",
-			"repo":            repoFullName,
-			"issue_num":       strconv.Itoa(prNum),
-			"is_pr":           "true",
-			"pr_branch":       e.GetPullRequest().GetHead().GetRef(),
-			"path":            e.GetComment().GetPath(),
-			"comment_id":      strconv.FormatInt(e.GetComment().GetID(), 10),
-			"review_id":       strconv.FormatInt(e.GetComment().GetPullRequestReviewID(), 10),
-			"installation_id": strconv.FormatInt(installationID, 10),
-		},
-	}
-
-	return handler(ctx, incoming)
-}
-
+// handlePRReview processes a submitted review together with all its inline
+// comments. This is the single entry point for review processing — the
+// PullRequestReviewCommentEvent webhook is intentionally ignored (see
+// handleWebhook) to avoid duplicate tasks. By fetching comments via the
+// API here, we keep a single code path for review processing.
 func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEvent, installationID int64, handler adapter.EventHandler) error {
 	if e.GetAction() != "submitted" {
 		return nil
 	}
 
+	repoFullName := e.GetRepo().GetFullName()
+	prNum := e.GetPullRequest().GetNumber()
+	reviewID := e.GetReview().GetID()
 	body := e.GetReview().GetBody()
-	if strings.TrimSpace(body) == "" {
+
+	userLogin := e.GetReview().GetUser().GetLogin()
+	if a.isBotUser(userLogin) {
+		slog.Debug("ignoring own review", "user", userLogin, "event", "pr_review")
 		return nil
 	}
 
-	mention := "@" + a.botUsername
-	mentioned := strings.Contains(body, mention)
-	isBotPR := a.isBotUser(e.GetPullRequest().GetUser().GetLogin())
+	// Fetch all inline comments belonging to this review so we can
+	// process them together with the review body.
+	client := a.getInstallationClient(installationID)
+	owner, repo, err := vcsgithub.SplitRepo(repoFullName)
+	if err != nil {
+		return err
+	}
+	comments, _, err := client.PullRequests.ListReviewComments(ctx, owner, repo, prNum, reviewID, nil)
+	if err != nil {
+		return fmt.Errorf("listing review comments: %w", err)
+	}
 
+	// Nothing to process if both body and comments are empty.
+	if strings.TrimSpace(body) == "" && len(comments) == 0 {
+		return nil
+	}
+
+	// Determine relevance: the bot must be mentioned in the review body
+	// or in any inline comment, unless the PR itself belongs to the bot.
+	mention := "@" + a.botUsername
+	isBotPR := a.isBotUser(e.GetPullRequest().GetUser().GetLogin())
+	mentioned := strings.Contains(body, mention)
+	if !mentioned && !isBotPR {
+		for _, c := range comments {
+			if strings.Contains(c.GetBody(), mention) {
+				mentioned = true
+				break
+			}
+		}
+	}
 	if !mentioned && !isBotPR {
 		return nil
 	}
 
-	userLogin := e.GetReview().GetUser().GetLogin()
-	if a.isBotUser(userLogin) {
-		slog.Debug("ignoring own comment", "user", userLogin, "event", "pr_review")
-		return nil
-	}
 	if !a.isUserAllowed(userLogin) {
 		slog.Info("unauthorized user", "user", userLogin, "event", "pr_review")
-		repoFullName := e.GetRepo().GetFullName()
-		a.denyUnauthorized(ctx, installationID, repoFullName, e.GetPullRequest().GetNumber(), body)
+		a.denyUnauthorized(ctx, installationID, repoFullName, prNum, body)
 		return nil
 	}
 
-	content := strings.TrimSpace(strings.ReplaceAll(body, mention, ""))
+	threadID := fmt.Sprintf("github-%s-%d", repoFullName, prNum)
+	branch := e.GetPullRequest().GetHead().GetRef()
+	installIDStr := strconv.FormatInt(installationID, 10)
+	reviewIDStr := strconv.FormatInt(reviewID, 10)
 
-	repoFullName := e.GetRepo().GetFullName()
-	prNum := e.GetPullRequest().GetNumber()
+	var events []domain.IncomingEvent
 
-	incoming := domain.IncomingEvent{
-		ChannelRef: NewRef(repoFullName, prNum),
-		ThreadID:   fmt.Sprintf("github-%s-%d", repoFullName, prNum),
-		UserID:     userLogin,
-		Content:    content,
-		Metadata: map[string]string{
-			"vcs":             a.Name(),
-			"type":            "review",
-			"repo":            repoFullName,
-			"issue_num":       strconv.Itoa(prNum),
-			"is_pr":           "true",
-			"pr_branch":       e.GetPullRequest().GetHead().GetRef(),
-			"review_state":    e.GetReview().GetState(),
-			"review_id":       strconv.FormatInt(e.GetReview().GetID(), 10),
-			"installation_id": strconv.FormatInt(installationID, 10),
-		},
+	if strings.TrimSpace(body) != "" {
+		content := strings.TrimSpace(strings.ReplaceAll(body, mention, ""))
+		events = append(events, domain.IncomingEvent{
+			ChannelRef: NewRef(repoFullName, prNum),
+			ThreadID:   threadID,
+			UserID:     userLogin,
+			Content:    content,
+			Metadata: map[string]string{
+				"vcs":             a.Name(),
+				"type":            "review",
+				"repo":            repoFullName,
+				"issue_num":       strconv.Itoa(prNum),
+				"is_pr":           "true",
+				"pr_branch":       branch,
+				"review_state":    e.GetReview().GetState(),
+				"review_id":       reviewIDStr,
+				"installation_id": installIDStr,
+			},
+		})
 	}
 
-	return handler(ctx, incoming)
+	for _, c := range comments {
+		content := strings.TrimSpace(strings.ReplaceAll(c.GetBody(), mention, ""))
+		ref := WithComment(NewRef(repoFullName, prNum), c.GetID(), "review_comment")
+		events = append(events, domain.IncomingEvent{
+			ChannelRef: ref,
+			ThreadID:   threadID,
+			UserID:     userLogin,
+			Content:    content,
+			Metadata: map[string]string{
+				"vcs":             a.Name(),
+				"type":            "review_comment",
+				"repo":            repoFullName,
+				"issue_num":       strconv.Itoa(prNum),
+				"is_pr":           "true",
+				"pr_branch":       branch,
+				"path":            c.GetPath(),
+				"comment_id":      strconv.FormatInt(c.GetID(), 10),
+				"review_id":       reviewIDStr,
+				"installation_id": installIDStr,
+			},
+		})
+	}
+
+	return handler(ctx, events)
 }
 
 func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, message string) error {

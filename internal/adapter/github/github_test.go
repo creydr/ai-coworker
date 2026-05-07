@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -121,11 +122,9 @@ func TestHandleIssueComment(t *testing.T) {
 
 	a := newTestAdapter(t, secret, botUser)
 
-	var captured domain.IncomingEvent
-	var handlerCalled bool
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
-		handlerCalled = true
-		captured = ev
+	var captured []domain.IncomingEvent
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
+		captured = append(captured, evs...)
 		return nil
 	})
 
@@ -158,37 +157,38 @@ func TestHandleIssueComment(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 OK, got %d", resp.StatusCode)
 	}
-	if !handlerCalled {
-		t.Fatal("event handler was not called")
+	if len(captured) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(captured))
 	}
 
 	// Verify IncomingEvent fields.
-	if captured.ChannelRef.Channel != "github" {
-		t.Errorf("ChannelRef.Channel = %q, want %q", captured.ChannelRef.Channel, "github")
+	ev := captured[0]
+	if ev.ChannelRef.Channel != "github" {
+		t.Errorf("ChannelRef.Channel = %q, want %q", ev.ChannelRef.Channel, "github")
 	}
 	expectedThreadID := fmt.Sprintf("github-%s-%d", repoFullName, issueNum)
-	if captured.ThreadID != expectedThreadID {
-		t.Errorf("ThreadID = %q, want %q", captured.ThreadID, expectedThreadID)
+	if ev.ThreadID != expectedThreadID {
+		t.Errorf("ThreadID = %q, want %q", ev.ThreadID, expectedThreadID)
 	}
-	if captured.UserID != login {
-		t.Errorf("UserID = %q, want %q", captured.UserID, login)
+	if ev.UserID != login {
+		t.Errorf("UserID = %q, want %q", ev.UserID, login)
 	}
 	// The mention should be stripped from Content.
-	if captured.Content != "fix this" {
-		t.Errorf("Content = %q, want %q", captured.Content, "fix this")
+	if ev.Content != "fix this" {
+		t.Errorf("Content = %q, want %q", ev.Content, "fix this")
 	}
-	if captured.ChannelRef.Properties["repo"] != repoFullName {
-		t.Errorf("ChannelRef.Properties[repo] = %q, want %q", captured.ChannelRef.Properties["repo"], repoFullName)
+	if ev.ChannelRef.Properties["repo"] != repoFullName {
+		t.Errorf("ChannelRef.Properties[repo] = %q, want %q", ev.ChannelRef.Properties["repo"], repoFullName)
 	}
-	if captured.ChannelRef.Properties["issue_num"] != fmt.Sprint(issueNum) {
-		t.Errorf("ChannelRef.Properties[issue_num] = %q, want %q", captured.ChannelRef.Properties["issue_num"], fmt.Sprint(issueNum))
+	if ev.ChannelRef.Properties["issue_num"] != fmt.Sprint(issueNum) {
+		t.Errorf("ChannelRef.Properties[issue_num] = %q, want %q", ev.ChannelRef.Properties["issue_num"], fmt.Sprint(issueNum))
 	}
-	if captured.ChannelRef.Properties["comment_id"] != fmt.Sprint(commentID) {
-		t.Errorf("ChannelRef.Properties[comment_id] = %q, want %q", captured.ChannelRef.Properties["comment_id"], fmt.Sprint(commentID))
+	if ev.ChannelRef.Properties["comment_id"] != fmt.Sprint(commentID) {
+		t.Errorf("ChannelRef.Properties[comment_id] = %q, want %q", ev.ChannelRef.Properties["comment_id"], fmt.Sprint(commentID))
 	}
 	expectedThreadKey := fmt.Sprintf("%s#%d", repoFullName, issueNum)
-	if captured.ChannelRef.ThreadKey != expectedThreadKey {
-		t.Errorf("ChannelRef.ThreadKey = %q, want %q", captured.ChannelRef.ThreadKey, expectedThreadKey)
+	if ev.ChannelRef.ThreadKey != expectedThreadKey {
+		t.Errorf("ChannelRef.ThreadKey = %q, want %q", ev.ChannelRef.ThreadKey, expectedThreadKey)
 	}
 
 	// Metadata checks.
@@ -201,8 +201,8 @@ func TestHandleIssueComment(t *testing.T) {
 		"installation_id": "77777",
 	}
 	for k, v := range wantMeta {
-		if captured.Metadata[k] != v {
-			t.Errorf("Metadata[%q] = %q, want %q", k, captured.Metadata[k], v)
+		if ev.Metadata[k] != v {
+			t.Errorf("Metadata[%q] = %q, want %q", k, ev.Metadata[k], v)
 		}
 	}
 }
@@ -211,7 +211,7 @@ func TestWebhookInvalidSignature(t *testing.T) {
 	const secret = "correct-secret"
 	a := newTestAdapter(t, secret, "ai-coworker")
 
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
 		t.Fatal("handler should not be called for invalid signature")
 		return nil
 	})
@@ -258,9 +258,9 @@ func TestHandleIssueComment_CommentType(t *testing.T) {
 
 	a := newTestAdapter(t, secret, botUser)
 
-	var captured domain.IncomingEvent
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
-		captured = ev
+	var captured []domain.IncomingEvent
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
+		captured = append(captured, evs...)
 		return nil
 	})
 
@@ -286,8 +286,11 @@ func TestHandleIssueComment_CommentType(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	if captured.ChannelRef.Properties["comment_type"] != "issue_comment" {
-		t.Errorf("Properties[comment_type] = %q, want %q", captured.ChannelRef.Properties["comment_type"], "issue_comment")
+	if len(captured) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(captured))
+	}
+	if captured[0].ChannelRef.Properties["comment_type"] != "issue_comment" {
+		t.Errorf("Properties[comment_type] = %q, want %q", captured[0].ChannelRef.Properties["comment_type"], "issue_comment")
 	}
 }
 
@@ -325,24 +328,38 @@ func prReviewCommentPayload(t *testing.T, body, repoFullName, login string, prNu
 	return data
 }
 
-func prReviewPayload(t *testing.T, body, repoFullName, login string, prNum int, installationID int64, branch, state string) []byte {
+func prReviewPayload(t *testing.T, body, repoFullName, login string, prNum int, reviewID, installationID int64, branch, state string) []byte {
 	t.Helper()
+
+	return prReviewPayloadWithPRAuthor(t, body, repoFullName, login, "", prNum, reviewID, installationID, branch, state)
+}
+
+func prReviewPayloadWithPRAuthor(t *testing.T, body, repoFullName, login, prAuthor string, prNum int, reviewID, installationID int64, branch, state string) []byte {
+	t.Helper()
+
+	pr := map[string]interface{}{
+		"number": prNum,
+		"head": map[string]interface{}{
+			"ref": branch,
+		},
+	}
+	if prAuthor != "" {
+		pr["user"] = map[string]interface{}{
+			"login": prAuthor,
+		}
+	}
 
 	event := map[string]interface{}{
 		"action": "submitted",
 		"review": map[string]interface{}{
+			"id":    reviewID,
 			"body":  body,
 			"state": state,
 			"user": map[string]interface{}{
 				"login": login,
 			},
 		},
-		"pull_request": map[string]interface{}{
-			"number": prNum,
-			"head": map[string]interface{}{
-				"ref": branch,
-			},
-		},
+		"pull_request": pr,
 		"repository": map[string]interface{}{
 			"full_name": repoFullName,
 		},
@@ -356,6 +373,19 @@ func prReviewPayload(t *testing.T, body, repoFullName, login string, prNum int, 
 		t.Fatalf("failed to marshal payload: %v", err)
 	}
 	return data
+}
+
+// injectMockGitHubAPI creates a mock GitHub API server and stores a client
+// pointing to it in the adapter's installation client cache. The caller must
+// defer server.Close().
+func injectMockGitHubAPI(t *testing.T, a *Adapter, installationID int64, handler http.Handler) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	client := gh.NewClient(nil)
+	baseURL, _ := url.Parse(server.URL + "/")
+	client.BaseURL = baseURL
+	a.installationClients.Store(installationID, client)
+	return server
 }
 
 func sendWebhook(t *testing.T, ts *httptest.Server, eventType string, payload []byte, secret string) *http.Response {
@@ -376,19 +406,14 @@ func sendWebhook(t *testing.T, ts *httptest.Server, eventType string, payload []
 	return resp
 }
 
-func TestHandlePRReviewComment_WithMention(t *testing.T) {
-	const (
-		secret  = "test-secret"
-		botUser = "ai-coworker"
-	)
+// Review comment webhooks are intentionally ignored — processing is deferred
+// to handlePRReview when the review is submitted.
+func TestHandlePRReviewComment_Ignored(t *testing.T) {
+	a := newTestAdapter(t, "test-secret", "ai-coworker")
 
-	a := newTestAdapter(t, secret, botUser)
-
-	var captured domain.IncomingEvent
-	var handlerCalled bool
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+	handlerCalled := false
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
 		handlerCalled = true
-		captured = ev
 		return nil
 	})
 
@@ -400,63 +425,14 @@ func TestHandlePRReviewComment_WithMention(t *testing.T) {
 	defer ts.Close()
 
 	payload := prReviewCommentPayload(t, "@ai-coworker add error handling here", "org/repo", "reviewer", 5, 88888, 77777, "main.go", "feat/branch")
-	resp := sendWebhook(t, ts, "pull_request_review_comment", payload, secret)
+	resp := sendWebhook(t, ts, "pull_request_review_comment", payload, "test-secret")
 	_ = resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	if !handlerCalled {
-		t.Fatal("handler was not called")
-	}
-	if captured.Content != "add error handling here" {
-		t.Errorf("Content = %q, want %q", captured.Content, "add error handling here")
-	}
-	if captured.ChannelRef.Properties["comment_type"] != "review_comment" {
-		t.Errorf("Properties[comment_type] = %q, want %q", captured.ChannelRef.Properties["comment_type"], "review_comment")
-	}
-	if captured.ChannelRef.Properties["comment_id"] != "88888" {
-		t.Errorf("Properties[comment_id] = %q, want %q", captured.ChannelRef.Properties["comment_id"], "88888")
-	}
-	if captured.Metadata["vcs"] != "github" {
-		t.Errorf("Metadata[vcs] = %q, want %q", captured.Metadata["vcs"], "github")
-	}
-	if captured.Metadata["pr_branch"] != "feat/branch" {
-		t.Errorf("Metadata[pr_branch] = %q, want %q", captured.Metadata["pr_branch"], "feat/branch")
-	}
-	if captured.Metadata["comment_id"] != "88888" {
-		t.Errorf("Metadata[comment_id] = %q, want %q", captured.Metadata["comment_id"], "88888")
-	}
-	if captured.Metadata["is_pr"] != "true" {
-		t.Errorf("Metadata[is_pr] = %q, want %q", captured.Metadata["is_pr"], "true")
-	}
-	if captured.Metadata["path"] != "main.go" {
-		t.Errorf("Metadata[path] = %q, want %q", captured.Metadata["path"], "main.go")
-	}
-}
-
-func TestHandlePRReviewComment_WithoutMention(t *testing.T) {
-	a := newTestAdapter(t, "secret", "ai-coworker")
-
-	handlerCalled := false
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
-		handlerCalled = true
-		return nil
-	})
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
-		a.handleWebhook(r.Context(), w, r, handler)
-	})
-	ts := httptest.NewServer(mux)
-	defer ts.Close()
-
-	payload := prReviewCommentPayload(t, "this looks wrong", "org/repo", "reviewer", 5, 88888, 77777, "main.go", "feat/branch")
-	resp := sendWebhook(t, ts, "pull_request_review_comment", payload, "secret")
-	_ = resp.Body.Close()
-
 	if handlerCalled {
-		t.Fatal("handler should not be called when bot is not mentioned")
+		t.Fatal("handler should not be called for review comment webhooks")
 	}
 }
 
@@ -464,11 +440,17 @@ func TestHandlePRReview_WithMention(t *testing.T) {
 	const secret = "test-secret"
 	a := newTestAdapter(t, secret, "ai-coworker")
 
-	var captured domain.IncomingEvent
-	var handlerCalled bool
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
-		handlerCalled = true
-		captured = ev
+	// Mock GitHub API returning no inline comments for this review.
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]interface{}{})
+	})
+	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
+	defer mockAPI.Close()
+
+	var captured []domain.IncomingEvent
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
+		captured = append(captured, evs...)
 		return nil
 	})
 
@@ -479,38 +461,49 @@ func TestHandlePRReview_WithMention(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
-	payload := prReviewPayload(t, "@ai-coworker please fix these issues", "org/repo", "reviewer", 3, 77777, "feat/fix", "changes_requested")
+	payload := prReviewPayload(t, "@ai-coworker please fix these issues", "org/repo", "reviewer", 3, 55555, 77777, "feat/fix", "changes_requested")
 	resp := sendWebhook(t, ts, "pull_request_review", payload, secret)
 	_ = resp.Body.Close()
 
-	if !handlerCalled {
-		t.Fatal("handler was not called")
+	if len(captured) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(captured))
 	}
-	if captured.Content != "please fix these issues" {
-		t.Errorf("Content = %q, want %q", captured.Content, "please fix these issues")
+	ev := captured[0]
+	if ev.Content != "please fix these issues" {
+		t.Errorf("Content = %q, want %q", ev.Content, "please fix these issues")
 	}
-	if captured.Metadata["vcs"] != "github" {
-		t.Errorf("Metadata[vcs] = %q, want %q", captured.Metadata["vcs"], "github")
+	if ev.Metadata["vcs"] != "github" {
+		t.Errorf("Metadata[vcs] = %q, want %q", ev.Metadata["vcs"], "github")
 	}
-	if captured.Metadata["pr_branch"] != "feat/fix" {
-		t.Errorf("Metadata[pr_branch] = %q, want %q", captured.Metadata["pr_branch"], "feat/fix")
+	if ev.Metadata["pr_branch"] != "feat/fix" {
+		t.Errorf("Metadata[pr_branch] = %q, want %q", ev.Metadata["pr_branch"], "feat/fix")
 	}
-	if captured.Metadata["review_state"] != "changes_requested" {
-		t.Errorf("Metadata[review_state] = %q, want %q", captured.Metadata["review_state"], "changes_requested")
+	if ev.Metadata["review_state"] != "changes_requested" {
+		t.Errorf("Metadata[review_state] = %q, want %q", ev.Metadata["review_state"], "changes_requested")
 	}
-	if captured.Metadata["is_pr"] != "true" {
-		t.Errorf("Metadata[is_pr] = %q, want %q", captured.Metadata["is_pr"], "true")
+	if ev.Metadata["is_pr"] != "true" {
+		t.Errorf("Metadata[is_pr] = %q, want %q", ev.Metadata["is_pr"], "true")
 	}
-	if captured.Metadata["type"] != "review" {
-		t.Errorf("Metadata[type] = %q, want %q", captured.Metadata["type"], "review")
+	if ev.Metadata["type"] != "review" {
+		t.Errorf("Metadata[type] = %q, want %q", ev.Metadata["type"], "review")
 	}
 }
 
 func TestHandlePRReview_WithoutMention(t *testing.T) {
 	a := newTestAdapter(t, "secret", "ai-coworker")
 
+	// Mock API returns comments that also don't mention the bot.
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]map[string]interface{}{
+			{"id": 111, "body": "looks good", "path": "main.go"},
+		})
+	})
+	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
+	defer mockAPI.Close()
+
 	handlerCalled := false
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
 		handlerCalled = true
 		return nil
 	})
@@ -522,7 +515,7 @@ func TestHandlePRReview_WithoutMention(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
-	payload := prReviewPayload(t, "LGTM", "org/repo", "reviewer", 3, 77777, "feat/fix", "approved")
+	payload := prReviewPayload(t, "LGTM", "org/repo", "reviewer", 3, 55555, 77777, "feat/fix", "approved")
 	resp := sendWebhook(t, ts, "pull_request_review", payload, "secret")
 	_ = resp.Body.Close()
 
@@ -580,7 +573,7 @@ func TestHandleIssueComment_UnauthorizedUser(t *testing.T) {
 	a := newTestAdapterWithUsers(t, secret, "ai-coworker", []string{"alice"})
 
 	handlerCalled := false
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
 		handlerCalled = true
 		return nil
 	})
@@ -609,7 +602,7 @@ func TestHandleIssueComment_EmptyAllowlistBlocksAll(t *testing.T) {
 	a := newTestAdapterWithUsers(t, secret, "ai-coworker", []string{})
 
 	handlerCalled := false
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
 		handlerCalled = true
 		return nil
 	})
@@ -634,11 +627,9 @@ func TestHandleIssueComment_BotCreatedPR_NoMention(t *testing.T) {
 	const secret = "test-secret"
 	a := newTestAdapter(t, secret, "ai-coworker")
 
-	var received domain.IncomingEvent
-	handlerCalled := false
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
-		handlerCalled = true
-		received = ev
+	var captured []domain.IncomingEvent
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
+		captured = append(captured, evs...)
 		return nil
 	})
 
@@ -653,11 +644,11 @@ func TestHandleIssueComment_BotCreatedPR_NoMention(t *testing.T) {
 	resp := sendWebhook(t, ts, "issue_comment", payload, secret)
 	_ = resp.Body.Close()
 
-	if !handlerCalled {
-		t.Fatal("handler should be called for comments on bot-created PRs without mention")
+	if len(captured) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(captured))
 	}
-	if received.Content != "Please fix the tests" {
-		t.Errorf("Content = %q, want %q", received.Content, "Please fix the tests")
+	if captured[0].Content != "Please fix the tests" {
+		t.Errorf("Content = %q, want %q", captured[0].Content, "Please fix the tests")
 	}
 }
 
@@ -666,7 +657,7 @@ func TestHandleIssueComment_NotBotPR_NoMention_Ignored(t *testing.T) {
 	a := newTestAdapter(t, secret, "ai-coworker")
 
 	handlerCalled := false
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
 		handlerCalled = true
 		return nil
 	})
@@ -687,12 +678,20 @@ func TestHandleIssueComment_NotBotPR_NoMention_Ignored(t *testing.T) {
 	}
 }
 
-func TestHandlePRReview_EmptyBody_Ignored(t *testing.T) {
+func TestHandlePRReview_EmptyBodyNoComments_Ignored(t *testing.T) {
 	const secret = "test-secret"
 	a := newTestAdapter(t, secret, "ai-coworker")
 
+	// Mock API returns no comments for this review.
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]interface{}{})
+	})
+	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
+	defer mockAPI.Close()
+
 	handlerCalled := false
-	handler := adapter.EventHandler(func(_ context.Context, ev domain.IncomingEvent) error {
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
 		handlerCalled = true
 		return nil
 	})
@@ -704,11 +703,172 @@ func TestHandlePRReview_EmptyBody_Ignored(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
-	payload := prReviewPayload(t, "", "org/repo", "reviewer", 3, 77777, "feat/fix", "commented")
+	payload := prReviewPayload(t, "", "org/repo", "reviewer", 3, 55555, 77777, "feat/fix", "commented")
 	resp := sendWebhook(t, ts, "pull_request_review", payload, secret)
 	_ = resp.Body.Close()
 
 	if handlerCalled {
-		t.Fatal("handler should not be called for PR reviews with empty body")
+		t.Fatal("handler should not be called for reviews with empty body and no comments")
+	}
+}
+
+func TestHandlePRReview_WithComments(t *testing.T) {
+	const secret = "test-secret"
+	a := newTestAdapter(t, secret, "ai-coworker")
+
+	// Mock API returns 2 inline comments for this review.
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]map[string]interface{}{
+			{"id": 111, "body": "fix error handling", "path": "main.go"},
+			{"id": 222, "body": "add validation", "path": "utils.go"},
+		})
+	})
+	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
+	defer mockAPI.Close()
+
+	var events []domain.IncomingEvent
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
+		events = append(events, evs...)
+		return nil
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
+		a.handleWebhook(r.Context(), w, r, handler)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	payload := prReviewPayloadWithPRAuthor(t, "@ai-coworker fix these", "org/repo", "reviewer", "ai-coworker[bot]", 3, 55555, 77777, "feat/fix", "changes_requested")
+	resp := sendWebhook(t, ts, "pull_request_review", payload, secret)
+	_ = resp.Body.Close()
+
+	// Expect 3 events: 1 for review body + 2 for inline comments.
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+
+	// First event: review body.
+	if events[0].Metadata["type"] != "review" {
+		t.Errorf("event[0] type = %q, want %q", events[0].Metadata["type"], "review")
+	}
+	if events[0].Content != "fix these" {
+		t.Errorf("event[0] content = %q, want %q", events[0].Content, "fix these")
+	}
+
+	// Second event: first inline comment.
+	if events[1].Metadata["type"] != "review_comment" {
+		t.Errorf("event[1] type = %q, want %q", events[1].Metadata["type"], "review_comment")
+	}
+	if events[1].Content != "fix error handling" {
+		t.Errorf("event[1] content = %q, want %q", events[1].Content, "fix error handling")
+	}
+	if events[1].Metadata["path"] != "main.go" {
+		t.Errorf("event[1] path = %q, want %q", events[1].Metadata["path"], "main.go")
+	}
+	if events[1].ChannelRef.Properties["comment_id"] != "111" {
+		t.Errorf("event[1] comment_id = %q, want %q", events[1].ChannelRef.Properties["comment_id"], "111")
+	}
+	if events[1].ChannelRef.Properties["comment_type"] != "review_comment" {
+		t.Errorf("event[1] comment_type = %q, want %q", events[1].ChannelRef.Properties["comment_type"], "review_comment")
+	}
+
+	// Third event: second inline comment.
+	if events[2].Metadata["type"] != "review_comment" {
+		t.Errorf("event[2] type = %q, want %q", events[2].Metadata["type"], "review_comment")
+	}
+	if events[2].Metadata["path"] != "utils.go" {
+		t.Errorf("event[2] path = %q, want %q", events[2].Metadata["path"], "utils.go")
+	}
+}
+
+func TestHandlePRReview_EmptyBodyWithComments(t *testing.T) {
+	const secret = "test-secret"
+	a := newTestAdapter(t, secret, "ai-coworker")
+
+	// Mock API returns 1 comment — simulates a standalone single-file
+	// comment ("Comment" button, not "Start a review").
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]map[string]interface{}{
+			{"id": 111, "body": "@ai-coworker fix this", "path": "main.go"},
+		})
+	})
+	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
+	defer mockAPI.Close()
+
+	var events []domain.IncomingEvent
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
+		events = append(events, evs...)
+		return nil
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
+		a.handleWebhook(r.Context(), w, r, handler)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	// Empty review body — the comment is the only content.
+	payload := prReviewPayload(t, "", "org/repo", "reviewer", 3, 55555, 77777, "feat/fix", "commented")
+	resp := sendWebhook(t, ts, "pull_request_review", payload, secret)
+	_ = resp.Body.Close()
+
+	// Only 1 event for the inline comment, no event for the empty body.
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Metadata["type"] != "review_comment" {
+		t.Errorf("event type = %q, want %q", events[0].Metadata["type"], "review_comment")
+	}
+	if events[0].Content != "fix this" {
+		t.Errorf("content = %q, want %q", events[0].Content, "fix this")
+	}
+}
+
+func TestHandlePRReview_MentionOnlyInComment(t *testing.T) {
+	const secret = "test-secret"
+	a := newTestAdapter(t, secret, "ai-coworker")
+
+	// Review body does NOT mention the bot, but a comment does.
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]map[string]interface{}{
+			{"id": 111, "body": "@ai-coworker fix this function", "path": "main.go"},
+			{"id": 222, "body": "also check this", "path": "utils.go"},
+		})
+	})
+	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
+	defer mockAPI.Close()
+
+	var events []domain.IncomingEvent
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
+		events = append(events, evs...)
+		return nil
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
+		a.handleWebhook(r.Context(), w, r, handler)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	// Body says "some feedback" (no mention), but a comment mentions the bot.
+	payload := prReviewPayload(t, "some feedback", "org/repo", "reviewer", 3, 55555, 77777, "feat/fix", "changes_requested")
+	resp := sendWebhook(t, ts, "pull_request_review", payload, secret)
+	_ = resp.Body.Close()
+
+	// Expect 3 events: body + 2 comments (all included when review is relevant).
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+	if events[0].Metadata["type"] != "review" {
+		t.Errorf("event[0] type = %q, want %q", events[0].Metadata["type"], "review")
+	}
+	if events[1].Metadata["type"] != "review_comment" {
+		t.Errorf("event[1] type = %q, want %q", events[1].Metadata["type"], "review_comment")
 	}
 }

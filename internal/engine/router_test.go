@@ -162,7 +162,7 @@ func TestRouter_HandleEvent_PassesMetadata(t *testing.T) {
 		},
 	}
 
-	if err := r.HandleEvent(context.Background(), event); err != nil {
+	if err := r.HandleEvent(context.Background(), []domain.IncomingEvent{event}); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
 
@@ -206,7 +206,7 @@ func TestRouter_HandleEvent_NilMetadata(t *testing.T) {
 		Metadata: nil,
 	}
 
-	if err := r.HandleEvent(context.Background(), event); err != nil {
+	if err := r.HandleEvent(context.Background(), []domain.IncomingEvent{event}); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
 
@@ -237,7 +237,7 @@ func TestRouter_HandleEvent_Acknowledge(t *testing.T) {
 		Content: "do it",
 	}
 
-	if err := r.HandleEvent(context.Background(), event); err != nil {
+	if err := r.HandleEvent(context.Background(), []domain.IncomingEvent{event}); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
 
@@ -282,7 +282,7 @@ func TestRouter_HandleEvent_ExistingThread(t *testing.T) {
 		Content: "follow-up message",
 	}
 
-	if err := r.HandleEvent(context.Background(), event); err != nil {
+	if err := r.HandleEvent(context.Background(), []domain.IncomingEvent{event}); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
 
