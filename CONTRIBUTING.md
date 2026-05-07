@@ -2,28 +2,22 @@
 
 ## Architecture
 
-```
-Channel (Slack, GitHub, ...)
-      |
-  Channel Adapters ── normalize events
-      |
-  Event Router ── match to threads, create tasks
-      |
-  Worker Pool ── claim tasks (FOR UPDATE SKIP LOCKED)
-      |
-  Intent Classifier ── code_task | question | discussion | review
-      |
-  ┌───────────────┐     ┌────────────┐
-  │ Claude Code   │     │ LLM Direct │
-  │ (sandbox)     │     │ (Q&A)      │
-  └───────────────┘     └────────────┘
+```mermaid
+flowchart TD
+    A["Channel (Slack, GitHub, ...)"] --> B["Channel Adapters"]
+    B -->|"[]IncomingEvent"| C["Event Router"]
+    C --> D["Worker Pool"]
+    D --> E{"Intent Classifier"}
+    E -->|"code_task / review / info_lookup"| F["Claude Code\n(sandbox)"]
+    E -->|"question / discussion"| G["LLM Direct\n(Q&A)"]
 ```
 
 - **Channel adapters** receive events from external channels and normalize them into a common `IncomingEvent` format. The `adapter.Adapter` interface is pluggable — currently ships with GitHub (App webhooks) and Slack (Socket Mode).
-- **Event router** maps events to conversation threads stored in PostgreSQL and enqueues tasks.
-- **Worker pool** runs configurable goroutines that claim pending tasks from the database.
-- **Intent classifier** uses the LLM to categorize each task as a code task, question, discussion, or review.
-- **Code tasks** run inside ephemeral Docker containers with Claude Code CLI (`--dangerously-skip-permissions`), with full git/GitHub access.
+- **Event router** maps events to conversation threads stored in PostgreSQL and enqueues tasks. Processes events in batches.
+- **Worker pool** runs configurable goroutines that claim pending tasks from the database. Review tasks are batched — sibling review comments from the same PR are absorbed and merged into a single sandbox execution.
+- **Intent classifier** uses the LLM to categorize each task as a code task, review, info lookup, question, or discussion.
+- **Code tasks, reviews, and info lookups** run inside ephemeral containers (Docker or Kubernetes Jobs) with Claude Code CLI (`--dangerously-skip-permissions`), with VCS provider tokens for authenticated git operations.
+- **VCS providers** decouple repository operations from specific platforms. The `vcs.Provider` interface handles token creation, clone URLs, and credential setup — currently ships with GitHub, extensible to GitLab, Bitbucket, etc.
 - **Non-code tasks** (questions, discussions) go directly to the LLM for a conversational response.
 
 See [docs/architecture.md](docs/architecture.md) for a detailed overview of the system design, component responsibilities, and the thread-based conversation model.
@@ -40,17 +34,18 @@ internal/
   domain/                 Core types (Event, Thread, Task, Message)
   engine/                 Router, worker pool, intent classifier
   executor/
-    claudecode/           Sandbox executor (Docker + Claude Code)
+    claudecode/           Sandbox executor (Docker/K8s + Claude Code)
     llmexec/              Direct LLM executor (Q&A)
   llm/                    LLM provider interface
-    claude/               Anthropic Claude implementation
-    vertex/               Vertex AI (Claude on Google Cloud)
+    anthropic/            Anthropic Claude API (direct + Vertex AI)
     openai/               OpenAI-compatible API
   sandbox/                Sandbox runtime interface
     docker/               Docker container runtime
     kubernetes/           Kubernetes Job runtime
   store/                  Data store interface + PostgreSQL implementation
     migrations/           SQL migration files
+  vcs/                    VCS provider abstraction
+    github/               GitHub VCS provider (tokens, clone URLs)
 sandbox/                  Dockerfile and entrypoint for sandbox image
 deploy/kubernetes/        Kustomize manifests for Kubernetes deployment
   base/                   Base manifests (Deployment, Service, RBAC, config)
