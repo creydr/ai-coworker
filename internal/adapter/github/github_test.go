@@ -328,7 +328,7 @@ func prReviewCommentPayload(t *testing.T, body, repoFullName, login string, prNu
 	return data
 }
 
-func prReviewPayload(t *testing.T, body, repoFullName, login string, prNum int, reviewID, installationID int64, branch, state string) []byte {
+func prReviewPayload(t *testing.T, body, repoFullName, login string, prNum int, reviewID, installationID int64, branch, state string) []byte { //nolint:unparam
 	t.Helper()
 
 	return prReviewPayloadWithPRAuthor(t, body, repoFullName, login, "", prNum, reviewID, installationID, branch, state)
@@ -378,7 +378,7 @@ func prReviewPayloadWithPRAuthor(t *testing.T, body, repoFullName, login, prAuth
 // injectMockGitHubAPI creates a mock GitHub API server and stores a client
 // pointing to it in the adapter's installation client cache. The caller must
 // defer server.Close().
-func injectMockGitHubAPI(t *testing.T, a *Adapter, installationID int64, handler http.Handler) *httptest.Server {
+func injectMockGitHubAPI(t *testing.T, a *Adapter, installationID int64, handler http.Handler) *httptest.Server { //nolint:unparam
 	t.Helper()
 	server := httptest.NewServer(handler)
 	client := gh.NewClient(nil)
@@ -443,7 +443,7 @@ func TestHandlePRReview_WithMention(t *testing.T) {
 	// Mock GitHub API returning no inline comments for this review.
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode([]interface{}{})
+		_ = json.NewEncoder(w).Encode([]interface{}{})
 	})
 	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
 	defer mockAPI.Close()
@@ -495,7 +495,7 @@ func TestHandlePRReview_WithoutMention(t *testing.T) {
 	// Mock API returns comments that also don't mention the bot.
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode([]map[string]interface{}{
+		_ = json.NewEncoder(w).Encode([]map[string]interface{}{
 			{"id": 111, "body": "looks good", "path": "main.go"},
 		})
 	})
@@ -685,7 +685,7 @@ func TestHandlePRReview_EmptyBodyNoComments_Ignored(t *testing.T) {
 	// Mock API returns no comments for this review.
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode([]interface{}{})
+		_ = json.NewEncoder(w).Encode([]interface{}{})
 	})
 	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
 	defer mockAPI.Close()
@@ -719,7 +719,7 @@ func TestHandlePRReview_WithComments(t *testing.T) {
 	// Mock API returns 2 inline comments for this review.
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode([]map[string]interface{}{
+		_ = json.NewEncoder(w).Encode([]map[string]interface{}{
 			{"id": 111, "body": "fix error handling", "path": "main.go"},
 			{"id": 222, "body": "add validation", "path": "utils.go"},
 		})
@@ -791,7 +791,7 @@ func TestHandlePRReview_EmptyBodyWithComments(t *testing.T) {
 	// comment ("Comment" button, not "Start a review").
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode([]map[string]interface{}{
+		_ = json.NewEncoder(w).Encode([]map[string]interface{}{
 			{"id": 111, "body": "@ai-coworker fix this", "path": "main.go"},
 		})
 	})
@@ -835,7 +835,7 @@ func TestHandlePRReview_MentionOnlyInComment(t *testing.T) {
 	// Review body does NOT mention the bot, but a comment does.
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode([]map[string]interface{}{
+		_ = json.NewEncoder(w).Encode([]map[string]interface{}{
 			{"id": 111, "body": "@ai-coworker fix this function", "path": "main.go"},
 			{"id": 222, "body": "also check this", "path": "utils.go"},
 		})
