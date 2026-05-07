@@ -716,12 +716,12 @@ func TestHandlePRReview_WithComments(t *testing.T) {
 	const secret = "test-secret"
 	a := newTestAdapter(t, secret, "ai-coworker")
 
-	// Mock API returns 2 inline comments for this review.
+	// Mock API returns 2 inline comments with line info.
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode([]map[string]interface{}{
-			{"id": 111, "body": "fix error handling", "path": "main.go"},
-			{"id": 222, "body": "add validation", "path": "utils.go"},
+			{"id": 111, "body": "fix error handling", "path": "main.go", "line": 42, "start_line": 40},
+			{"id": 222, "body": "add validation", "path": "utils.go", "line": 15},
 		})
 	})
 	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
@@ -757,7 +757,7 @@ func TestHandlePRReview_WithComments(t *testing.T) {
 		t.Errorf("event[0] content = %q, want %q", events[0].Content, "fix these")
 	}
 
-	// Second event: first inline comment.
+	// Second event: first inline comment (multi-line range).
 	if events[1].Metadata["type"] != "review_comment" {
 		t.Errorf("event[1] type = %q, want %q", events[1].Metadata["type"], "review_comment")
 	}
@@ -767,6 +767,12 @@ func TestHandlePRReview_WithComments(t *testing.T) {
 	if events[1].Metadata["path"] != "main.go" {
 		t.Errorf("event[1] path = %q, want %q", events[1].Metadata["path"], "main.go")
 	}
+	if events[1].Metadata["line"] != "42" {
+		t.Errorf("event[1] line = %q, want %q", events[1].Metadata["line"], "42")
+	}
+	if events[1].Metadata["start_line"] != "40" {
+		t.Errorf("event[1] start_line = %q, want %q", events[1].Metadata["start_line"], "40")
+	}
 	if events[1].ChannelRef.Properties["comment_id"] != "111" {
 		t.Errorf("event[1] comment_id = %q, want %q", events[1].ChannelRef.Properties["comment_id"], "111")
 	}
@@ -774,12 +780,18 @@ func TestHandlePRReview_WithComments(t *testing.T) {
 		t.Errorf("event[1] comment_type = %q, want %q", events[1].ChannelRef.Properties["comment_type"], "review_comment")
 	}
 
-	// Third event: second inline comment.
+	// Third event: second inline comment (single line).
 	if events[2].Metadata["type"] != "review_comment" {
 		t.Errorf("event[2] type = %q, want %q", events[2].Metadata["type"], "review_comment")
 	}
 	if events[2].Metadata["path"] != "utils.go" {
 		t.Errorf("event[2] path = %q, want %q", events[2].Metadata["path"], "utils.go")
+	}
+	if events[2].Metadata["line"] != "15" {
+		t.Errorf("event[2] line = %q, want %q", events[2].Metadata["line"], "15")
+	}
+	if events[2].Metadata["start_line"] != "" {
+		t.Errorf("event[2] start_line = %q, want empty (single-line comment)", events[2].Metadata["start_line"])
 	}
 }
 
