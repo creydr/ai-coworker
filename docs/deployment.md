@@ -128,6 +128,28 @@ export AI_COWORKER__LLM__API_KEY=...  # if required by the endpoint
 export AI_COWORKER__LLM__MODEL=granite-3.3-8b
 ```
 
+## Slack App Setup
+
+Create a Slack app at https://api.slack.com/apps and configure:
+
+**Socket Mode:** Enable under *Socket Mode* settings. Create an app-level token with `connections:write` scope — this is the `APP_TOKEN` (`xapp-...`).
+
+**Event Subscriptions:** Enable and subscribe to the `app_mention` bot event.
+
+**Bot Token Scopes** (under *OAuth & Permissions*):
+
+| Scope | Required for |
+|-------|-------------|
+| `app_mentions:read` | Receiving @-mentions |
+| `chat:write` | Posting responses |
+| `reactions:write` | Adding eyes reaction to acknowledge messages |
+| `channels:history` | Reading thread context in public channels |
+| `groups:history` | Reading thread context in private channels |
+| `im:history` | Reading thread context in direct messages |
+| `mpim:history` | Reading thread context in group direct messages |
+
+Install the app to your workspace. The bot token (`xoxb-...`) is the `BOT_TOKEN`.
+
 ## Kubernetes
 
 Kustomize manifests are provided in `deploy/kubernetes/`. They include a Deployment, Service, RBAC for sandbox Job creation, and config/secret templates. The service requires a PostgreSQL database — you can either provide your own or use the included overlay.
