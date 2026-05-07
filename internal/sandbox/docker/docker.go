@@ -1,12 +1,14 @@
 package docker
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -85,9 +87,26 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 		return nil, fmt.Errorf("failed to chmod prompt file: %w", err)
 	}
 
-	binds := make([]string, len(req.Binds), len(req.Binds)+1)
+	binds := make([]string, len(req.Binds), len(req.Binds)+1+len(req.SkillImages))
 	copy(binds, req.Binds)
 	binds = append(binds, promptFile.Name()+":/tmp/prompt.txt:ro")
+
+	var skillDirs []string
+	for i, img := range req.SkillImages {
+		if err := r.ensureImage(ctx, img); err != nil {
+			cleanupSkillDirs(skillDirs)
+			return nil, fmt.Errorf("failed to pull skill image %s: %w", img, err)
+		}
+		dir, err := r.extractSkillImage(ctx, img, i)
+		if err != nil {
+			cleanupSkillDirs(skillDirs)
+			return nil, fmt.Errorf("failed to extract skill image %s: %w", img, err)
+		}
+		skillDirs = append(skillDirs, dir)
+		binds = append(binds, fmt.Sprintf("%s:/opt/skills-%d:ro", dir, i))
+	}
+	defer cleanupSkillDirs(skillDirs)
+
 	hostCfg := &container.HostConfig{
 		Resources: resources,
 		Binds:     binds,
@@ -187,6 +206,105 @@ func (r *Runtime) createContainer(ctx context.Context, cfg *container.Config, ho
 	slog.Info("sandbox container started, follow logs with: docker logs -f "+shortID, "container", shortID)
 
 	return resp.ID, cleanup, nil
+}
+
+// extractSkillImage creates a throwaway container from the skill image and
+// copies its /skills directory to a temporary host directory.
+func (r *Runtime) extractSkillImage(ctx context.Context, img string, index int) (string, error) {
+	resp, err := r.client.ContainerCreate(ctx, &container.Config{Image: img}, nil, nil, nil, "")
+	if err != nil {
+		return "", fmt.Errorf("failed to create container from skill image: %w", err)
+	}
+	defer func() {
+		_ = r.client.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{})
+	}()
+
+	dir, err := os.MkdirTemp("", fmt.Sprintf("ai-coworker-skills-%d-*", index))
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp dir for skill image: %w", err)
+	}
+
+	reader, _, err := r.client.CopyFromContainer(ctx, resp.ID, "/skills")
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return "", fmt.Errorf("failed to copy /skills from image: %w", err)
+	}
+	defer reader.Close()
+
+	if err := extractTar(reader, dir); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", fmt.Errorf("failed to extract skill files: %w", err)
+	}
+
+	slog.Info("extracted skill image", "image", img, "dir", dir)
+	return dir, nil
+}
+
+func cleanupSkillDirs(dirs []string) {
+	for _, d := range dirs {
+		_ = os.RemoveAll(d)
+	}
+}
+
+const maxSkillFileSize = 10 << 20 // 10 MiB per file
+
+func extractTar(r io.Reader, dst string) error {
+	cleanDst := filepath.Clean(dst) + string(os.PathSeparator)
+	tr := tar.NewReader(r)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		target := filepath.Join(dst, header.Name)
+		if !strings.HasPrefix(filepath.Clean(target)+string(os.PathSeparator), cleanDst) &&
+			filepath.Clean(target) != filepath.Clean(dst) {
+			return fmt.Errorf("tar entry %q escapes destination directory", header.Name)
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if header.Size > maxSkillFileSize {
+				return fmt.Errorf("tar entry %q is %d bytes, exceeds %d byte limit", header.Name, header.Size, maxSkillFileSize)
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			f, err := os.Create(target)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(f, io.LimitReader(tr, maxSkillFileSize+1)); err != nil {
+				_ = f.Close()
+				return err
+			}
+			_ = f.Close()
+		case tar.TypeSymlink:
+			linkTarget := header.Linkname
+			if filepath.IsAbs(linkTarget) {
+				return fmt.Errorf("tar symlink %q has absolute target %q", header.Name, linkTarget)
+			}
+			resolved := filepath.Join(filepath.Dir(target), linkTarget)
+			if !strings.HasPrefix(filepath.Clean(resolved)+string(os.PathSeparator), cleanDst) &&
+				filepath.Clean(resolved) != filepath.Clean(dst) {
+				return fmt.Errorf("tar symlink %q target %q escapes destination directory", header.Name, linkTarget)
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			if err := os.Symlink(linkTarget, target); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func buildEnv(envVars map[string]string) []string {

@@ -183,6 +183,42 @@ func buildJob(name, namespace, serviceAccount string, req sandbox.ExecRequest, r
 	backoffLimit := int32(0)
 	ttl := int32(3600)
 
+	volumeMounts := []corev1.VolumeMount{{
+		Name:      "prompt",
+		MountPath: "/tmp/prompt.txt",
+		SubPath:   "prompt.txt",
+		ReadOnly:  true,
+	}}
+
+	volumes := []corev1.Volume{{
+		Name: "prompt",
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: name,
+				},
+			},
+		},
+	}}
+
+	for i, img := range req.SkillImages {
+		volName := fmt.Sprintf("skill-%d", i)
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      volName,
+			MountPath: fmt.Sprintf("/opt/skills-%d", i),
+			ReadOnly:  true,
+		})
+		volumes = append(volumes, corev1.Volume{
+			Name: volName,
+			VolumeSource: corev1.VolumeSource{
+				Image: &corev1.ImageVolumeSource{
+					Reference:  img,
+					PullPolicy: corev1.PullIfNotPresent,
+				},
+			},
+		})
+	}
+
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -197,27 +233,13 @@ func buildJob(name, namespace, serviceAccount string, req sandbox.ExecRequest, r
 					RestartPolicy:      corev1.RestartPolicyNever,
 					ServiceAccountName: serviceAccount,
 					Containers: []corev1.Container{{
-						Name:      "sandbox",
-						Image:     req.Image,
-						Env:       buildEnvVars(req.EnvVars),
-						Resources: resources,
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "prompt",
-							MountPath: "/tmp/prompt.txt",
-							SubPath:   "prompt.txt",
-							ReadOnly:  true,
-						}},
+						Name:         "sandbox",
+						Image:        req.Image,
+						Env:          buildEnvVars(req.EnvVars),
+						Resources:    resources,
+						VolumeMounts: volumeMounts,
 					}},
-					Volumes: []corev1.Volume{{
-						Name: "prompt",
-						VolumeSource: corev1.VolumeSource{
-							ConfigMap: &corev1.ConfigMapVolumeSource{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: name,
-								},
-							},
-						},
-					}},
+					Volumes: volumes,
 				},
 			},
 		},

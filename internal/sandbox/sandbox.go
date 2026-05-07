@@ -3,15 +3,16 @@ package sandbox
 import "context"
 
 type ExecRequest struct {
-	Image    string
-	CloneURL string
-	Branch   string
-	Prompt   string
-	EnvVars  map[string]string
-	Binds    []string
-	Timeout  int
-	CPULimit string
-	MemLimit string
+	Image       string
+	CloneURL    string
+	Branch      string
+	Prompt      string
+	EnvVars     map[string]string
+	Binds       []string
+	Timeout     int
+	CPULimit    string
+	MemLimit    string
+	SkillImages []string
 }
 
 type ExecResult struct {
