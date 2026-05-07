@@ -87,7 +87,9 @@ The webhook server listens on port 8080. For local development, use a tool like 
 
 ## Slack App Setup
 
-> **Note:** Slack support is experimental and not yet fully tested.
+The bot also integrates into Slack — ask it about PRs, issues, repositories or even ask it to provide a fix and it will respond in-thread:
+
+https://github.com/creydr/ai-coworker/raw/main/docs/video/demo-slack-github-integration.mp4
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app.
 2. Enable **Socket Mode** (Settings > Socket Mode) and generate an app-level token with the `connections:write` scope.
@@ -97,6 +99,10 @@ The webhook server listens on port 8080. For local development, use a tool like 
    - `app_mentions:read`
    - `chat:write`
    - `reactions:write`
+   - `channels:history`
+   - `groups:history`
+   - `im:history`
+   - `mpim:history`
 5. Install the app to your workspace and copy the bot token.
 6. Add the Slack settings to your `config.yaml`:
    ```yaml
@@ -129,8 +135,6 @@ The bot will:
 4. For questions: respond directly in the thread
 
 ### Slack
-
-> **Note:** Slack support is experimental and not yet fully tested.
 
 Mention the bot in any channel it's been added to:
 
