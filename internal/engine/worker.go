@@ -140,7 +140,7 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 	// Select the executor based on intent.
 	var exec executor.Executor
 	switch intent {
-	case domain.IntentCodeTask, domain.IntentReview:
+	case domain.IntentCodeTask, domain.IntentReview, domain.IntentInfoLookup:
 		exec = wp.codeExec
 	default:
 		exec = wp.llmExec

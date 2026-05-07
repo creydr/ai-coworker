@@ -36,7 +36,8 @@ func (c *IntentClassifier) Classify(ctx context.Context, event domain.IncomingEv
 	sb.WriteString("You are an intent classifier. Given the following conversation, classify the latest message into exactly one of these categories:\n")
 	sb.WriteString("- code_task: the user is requesting code changes, implementation, or a coding task\n")
 	sb.WriteString("- review: the user is requesting a code review\n")
-	sb.WriteString("- question: the user is asking a question that needs an answer\n")
+	sb.WriteString("- info_lookup: the user is asking about something that requires looking up external information (e.g. a GitHub PR, issue, repository, URL, or project state)\n")
+	sb.WriteString("- question: the user is asking a question that can be answered from general knowledge or the current conversation context\n")
 	sb.WriteString("- discussion: the user wants to discuss or brainstorm something\n\n")
 
 	if len(history) > 0 {
@@ -48,7 +49,7 @@ func (c *IntentClassifier) Classify(ctx context.Context, event domain.IncomingEv
 	}
 
 	fmt.Fprintf(&sb, "Latest message: %s\n\n", event.Content)
-	sb.WriteString("Respond with exactly one word: code_task, review, question, or discussion.")
+	sb.WriteString("Respond with exactly one word: code_task, review, info_lookup, question, or discussion.")
 
 	messages := []llm.Message{
 		{Role: domain.RoleUser, Content: sb.String()},
@@ -71,6 +72,8 @@ func parseIntent(response string) domain.Intent {
 		return domain.IntentCodeTask
 	case "review":
 		return domain.IntentReview
+	case "info_lookup":
+		return domain.IntentInfoLookup
 	case "question":
 		return domain.IntentQuestion
 	case "discussion":

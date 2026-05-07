@@ -31,5 +31,6 @@ const (
 	IntentQuestion   Intent = "question"
 	IntentDiscussion Intent = "discussion"
 	IntentReview     Intent = "review"
+	IntentInfoLookup Intent = "info_lookup"
 	IntentUnknown    Intent = "unknown"
 )

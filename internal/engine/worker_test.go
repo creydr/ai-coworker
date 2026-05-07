@@ -317,6 +317,49 @@ func TestWorker_IntentRouting_Question(t *testing.T) {
 	}
 }
 
+func TestWorker_IntentRouting_InfoLookup(t *testing.T) {
+	ms := newMockStore()
+	adapter := &mockAdapter{name: "github"}
+	router := NewRouter(ms)
+	router.RegisterAdapter(adapter)
+
+	codeExec := &mockExecutor{
+		result: &executor.Result{Response: "PR #18 summary: ..."},
+	}
+	llmExec := &mockExecutor{
+		result: &executor.Result{Response: "llm result"},
+	}
+	classifier := NewIntentClassifier(&mockLLMProvider{response: "info_lookup"})
+
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+
+	thread := &domain.Thread{
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "slack",
+			ThreadKey: "C123/1234.5678",
+		},
+		Status: domain.ThreadActive,
+	}
+	ms.threads["thread-1"] = thread
+
+	task := &domain.Task{
+		ID:       "task-1",
+		ThreadID: "thread-1",
+		Status:   domain.TaskInProgress,
+		Input:    "can you give me a summary of PR https://github.com/creydr/ai-coworker-test/pull/18?",
+	}
+
+	wp.processTask(context.Background(), "worker-0", task)
+
+	if codeExec.capturedCtx == nil {
+		t.Error("code executor was not called for info_lookup intent")
+	}
+	if llmExec.capturedCtx != nil {
+		t.Error("llm executor should not be called for info_lookup intent")
+	}
+}
+
 func TestWorker_IntentRouting_ReviewShortCircuit(t *testing.T) {
 	ms := newMockStore()
 	adapter := &mockAdapter{name: "github"}
