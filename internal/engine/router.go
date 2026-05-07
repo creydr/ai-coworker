@@ -36,27 +36,36 @@ func (r *Router) GetAdapter(name string) adapter.Adapter {
 	return r.adapters[name]
 }
 
-// HandleEvent processes an incoming event: acknowledges receipt, ensures a
-// thread exists, records the user message, and creates a pending task.
-func (r *Router) HandleEvent(ctx context.Context, event domain.IncomingEvent) error {
-	// Acknowledge the event if an adapter is available.
-	if a := r.adapters[event.ChannelRef.Channel]; a != nil {
-		if err := a.Acknowledge(ctx, event.ChannelRef); err != nil {
-			slog.Warn("failed to acknowledge event", "channel", event.ChannelRef.Channel, "error", err)
+// HandleEvent processes incoming events: acknowledges receipt, ensures a
+// thread exists, records user messages, and creates pending tasks.
+// All events are acknowledged first, then all tasks are created back-to-back
+// so they become claimable as a group rather than one at a time.
+func (r *Router) HandleEvent(ctx context.Context, events []domain.IncomingEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	// Acknowledge all events first (HTTP round-trips) before inserting
+	// any tasks, so workers can't claim the first task while later
+	// acknowledgments are still in flight.
+	for _, event := range events {
+		if a := r.adapters[event.ChannelRef.Channel]; a != nil {
+			if err := a.Acknowledge(ctx, event.ChannelRef); err != nil {
+				slog.Warn("failed to acknowledge event", "channel", event.ChannelRef.Channel, "error", err)
+			}
 		}
 	}
 
-	// Look up or create the thread.
-	ref := event.ChannelRef
+	// Look up or create the thread (all events in a batch share the same thread).
+	ref := events[0].ChannelRef
 	thread, err := r.store.GetThreadByChannelRef(ctx, ref.Channel, ref.ThreadKey)
 	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
 			return fmt.Errorf("looking up thread: %w", err)
 		}
 
-		// Thread does not exist yet — create one.
 		thread = &domain.Thread{
-			ChannelRef: event.ChannelRef,
+			ChannelRef: events[0].ChannelRef,
 			Status:     domain.ThreadActive,
 		}
 		if err := r.store.CreateThread(ctx, thread); err != nil {
@@ -64,25 +73,27 @@ func (r *Router) HandleEvent(ctx context.Context, event domain.IncomingEvent) er
 		}
 	}
 
-	// Record the user message.
-	msg := &domain.Message{
-		ThreadID: thread.ID,
-		Role:     domain.RoleUser,
-		Content:  event.Content,
-	}
-	if err := r.store.CreateMessage(ctx, msg); err != nil {
-		return fmt.Errorf("creating message: %w", err)
-	}
+	// Record messages and create tasks back-to-back without any network
+	// calls in between.
+	for _, event := range events {
+		msg := &domain.Message{
+			ThreadID: thread.ID,
+			Role:     domain.RoleUser,
+			Content:  event.Content,
+		}
+		if err := r.store.CreateMessage(ctx, msg); err != nil {
+			return fmt.Errorf("creating message: %w", err)
+		}
 
-	// Create a pending task for the worker pool to pick up.
-	task := &domain.Task{
-		ThreadID: thread.ID,
-		Status:   domain.TaskPending,
-		Input:    event.Content,
-		Metadata: event.Metadata,
-	}
-	if err := r.store.CreateTask(ctx, task); err != nil {
-		return fmt.Errorf("creating task: %w", err)
+		task := &domain.Task{
+			ThreadID: thread.ID,
+			Status:   domain.TaskPending,
+			Input:    event.Content,
+			Metadata: event.Metadata,
+		}
+		if err := r.store.CreateTask(ctx, task); err != nil {
+			return fmt.Errorf("creating task: %w", err)
+		}
 	}
 
 	return nil

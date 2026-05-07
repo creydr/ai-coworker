@@ -236,9 +236,9 @@ func (wp *WorkerPool) sendResponse(ctx context.Context, ref domain.ChannelRef, m
 }
 
 func (wp *WorkerPool) absorbReviewTasks(ctx context.Context, workerID string, primaryTask *domain.Task) []*domain.Task {
-	// Wait briefly for sibling webhooks (e.g. other review comments from the
-	// same PR review) to arrive and be persisted. ClaimNextTask's NOT EXISTS
-	// filter prevents other workers from stealing them during this window.
+	// Wait briefly so sibling tasks from the same review have time to be
+	// persisted. ClaimNextTask's advisory lock and NOT EXISTS filter prevent
+	// other workers from claiming them during this window.
 	select {
 	case <-time.After(reviewDebounce):
 	case <-ctx.Done():

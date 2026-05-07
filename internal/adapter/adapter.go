@@ -6,7 +6,7 @@ import (
 	"github.com/creydr/ai-coworker/internal/domain"
 )
 
-type EventHandler func(ctx context.Context, event domain.IncomingEvent) error
+type EventHandler func(ctx context.Context, events []domain.IncomingEvent) error
 
 type Adapter interface {
 	Start(ctx context.Context, handler EventHandler) error
