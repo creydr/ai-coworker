@@ -14,3 +14,5 @@ The thread context is prepended to the task input only — it's not stored as se
 
 - `internal/adapter/slack/slack.go`: Added `fetchThreadContext` (calls Slack API) and `formatThreadContext` (formats messages as `[Thread context:]` block). The `Start` handler prepends thread context when the message is a thread reply.
 - `internal/adapter/slack/slack_test.go`: Tests for `formatThreadContext` covering inclusion of all messages, exclusion of current message, empty threads, chronological order, and empty text skipping.
+- `internal/engine/intent.go`: Improved classifier prompt to clarify that follow-up questions about external resources (even short messages like "^") should be classified as `info_lookup`.
+- `docs/deployment.md`: Added Slack app setup section with all required bot token scopes, including the `*:history` scopes needed for thread context fetching.

@@ -1,6 +1,7 @@
 package slack
 
 import (
+	"strings"
 	"testing"
 
 	slacklib "github.com/slack-go/slack"
@@ -19,16 +20,16 @@ func TestFormatThreadContext_IncludesAllMessages(t *testing.T) {
 	if result == "" {
 		t.Fatal("expected non-empty context")
 	}
-	if !contains(result, "U001: can you summarize PR #18?") {
+	if !strings.Contains(result, "U001: can you summarize PR #18?") {
 		t.Error("should include user messages")
 	}
-	if !contains(result, "Bot: Here is the summary...") {
+	if !strings.Contains(result, "Bot: Here is the summary...") {
 		t.Error("should include bot messages (user field empty)")
 	}
-	if !contains(result, "U001: which items are open?") {
+	if !strings.Contains(result, "U001: which items are open?") {
 		t.Error("should include non-mentioned user messages")
 	}
-	if contains(result, "<@BOTID> ^") {
+	if strings.Contains(result, "<@BOTID> ^") {
 		t.Error("should exclude the current message")
 	}
 }
@@ -41,10 +42,10 @@ func TestFormatThreadContext_ExcludesCurrentMessage(t *testing.T) {
 
 	result := formatThreadContext(msgs, "1000.0002")
 
-	if !contains(result, "U001: hello") {
+	if !strings.Contains(result, "U001: hello") {
 		t.Error("should include earlier message")
 	}
-	if contains(result, "current msg") {
+	if strings.Contains(result, "current msg") {
 		t.Error("should exclude current message")
 	}
 }
@@ -92,23 +93,14 @@ func TestFormatThreadContext_SkipsEmptyText(t *testing.T) {
 
 	result := formatThreadContext(msgs, "1000.0003")
 
-	if contains(result, "U001: \n") {
+	if strings.Contains(result, "U001: \n") {
 		t.Error("should skip messages with empty text")
 	}
-	if !contains(result, "U002: has content") {
+	if !strings.Contains(result, "U002: has content") {
 		t.Error("should include messages with content")
 	}
 }
 
-func contains(s, substr string) bool {
-	return indexOf(s, substr) != -1
-}
-
 func indexOf(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
+	return strings.Index(s, substr)
 }
