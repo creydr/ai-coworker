@@ -125,27 +125,15 @@ make run
 
 Vertex AI uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials). Run `gcloud auth application-default login` first, which will write credentials to `~/.config/gcloud/application_default_credentials.json`..
 
-## GitHub App Setup for Development
+## App Setup for Development
 
-Create a **separate** GitHub App for local development (don't reuse your production app).
+### GitHub
 
-1. Go to **Settings > Developer settings > GitHub Apps > New GitHub App**.
-2. Fill in the basics:
-   - **Webhook URL:** a placeholder for now (you'll update this with your smee.io URL in the next section)
-   - **Webhook secret:** generate a random string and save it to a file
-3. Set repository permissions:
-   - Contents: **Read & write**
-   - Issues: **Read & write**
-   - Pull requests: **Read & write**
-   - Metadata: **Read-only**
-4. Subscribe to events:
-   - Issue comment
-   - Pull request review
-   - Pull request review comment
-5. Create the app, then:
-   - Note the **App ID** from the app's settings page
-   - Generate a **private key** and download the `.pem` file
-6. Install the app on a **test repository** (not your production repos).
+Follow the [GitHub App Setup](README.md#github-app-setup) instructions in the README. For local development, create a **separate** GitHub App (don't reuse your production app) and install it on a **test repository**. Use a placeholder webhook URL for now — you'll update it with your [smee.io URL](#exposing-webhooks-for-local-testing) in the next section.
+
+### Slack
+
+Follow the [Slack App Setup](README.md#slack-app-setup) instructions in the README. No public URL is needed — Socket Mode uses an outbound WebSocket connection.
 
 ## Exposing Webhooks for Local Testing
 
