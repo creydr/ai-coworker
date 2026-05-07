@@ -292,9 +292,15 @@ func (s *PostgresStore) CreateTask(ctx context.Context, t *domain.Task) error {
 }
 
 func (s *PostgresStore) ClaimNextTask(ctx context.Context, workerID string) (*domain.Task, error) {
-	// Skip pending tasks whose thread already has an in_progress task.
-	// This prevents multiple workers from claiming sibling review tasks
-	// concurrently, allowing the first worker to absorb them via ClaimPendingTasks.
+	// Two mechanisms prevent multiple workers from claiming tasks on the
+	// same thread concurrently:
+	//
+	// 1. NOT EXISTS: skip tasks whose thread already has a committed
+	//    in_progress task (handles the steady-state case).
+	// 2. pg_try_advisory_xact_lock: acquire a transaction-scoped lock on
+	//    the thread_id hash. This closes the race window where multiple
+	//    workers evaluate NOT EXISTS before any UPDATE has committed —
+	//    only one transaction at a time can claim from a given thread.
 	row := s.pool.QueryRow(ctx,
 		`UPDATE tasks
 		 SET status = 'in_progress', worker_id = $1, updated_at = $2
@@ -306,6 +312,7 @@ func (s *PostgresStore) ClaimNextTask(ctx context.Context, workerID string) (*do
 		           WHERE t2.thread_id = tasks.thread_id
 		             AND t2.status = 'in_progress'
 		       )
+		       AND pg_try_advisory_xact_lock(0, hashtext(thread_id))
 		     ORDER BY created_at
 		     LIMIT 1
 		     FOR UPDATE SKIP LOCKED
