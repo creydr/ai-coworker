@@ -431,8 +431,18 @@ func TestBuildMergedReviewInput(t *testing.T) {
 		{
 			Input: "add validation here",
 			Metadata: map[string]string{
+				"type":       "review_comment",
+				"path":       "internal/config/config.go",
+				"line":       "42",
+				"start_line": "38",
+			},
+		},
+		{
+			Input: "fix this too",
+			Metadata: map[string]string{
 				"type": "review_comment",
-				"path": "internal/config/config.go",
+				"path": "internal/server/server.go",
+				"line": "10",
 			},
 		},
 	}
@@ -445,14 +455,20 @@ func TestBuildMergedReviewInput(t *testing.T) {
 	if !strings.Contains(result, "--- Comment 1 (review body) ---") {
 		t.Error("primary task should be labeled as review body")
 	}
-	if !strings.Contains(result, "--- Comment 2 (on file: internal/config/config.go) ---") {
-		t.Error("absorbed task should show file path")
+	if !strings.Contains(result, "--- Comment 2 (on file: internal/config/config.go, lines 38-42) ---") {
+		t.Error("absorbed task should show file path with line range")
+	}
+	if !strings.Contains(result, "--- Comment 3 (on file: internal/server/server.go, line 10) ---") {
+		t.Error("absorbed task should show file path with single line")
 	}
 	if !strings.Contains(result, "fix the error handling") {
 		t.Error("primary task input should be included")
 	}
 	if !strings.Contains(result, "add validation here") {
 		t.Error("absorbed task input should be included")
+	}
+	if !strings.Contains(result, "fix this too") {
+		t.Error("second absorbed task input should be included")
 	}
 }
 

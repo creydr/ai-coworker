@@ -288,7 +288,13 @@ func buildMergedReviewInput(primary *domain.Task, absorbed []*domain.Task) strin
 		if t.Metadata["type"] == "review" {
 			sb.WriteString(" (review body)")
 		} else if path := t.Metadata["path"]; path != "" {
-			fmt.Fprintf(&sb, " (on file: %s)", path)
+			fmt.Fprintf(&sb, " (on file: %s", path)
+			if start, end := t.Metadata["start_line"], t.Metadata["line"]; start != "" && end != "" {
+				fmt.Fprintf(&sb, ", lines %s-%s", start, end)
+			} else if end := t.Metadata["line"]; end != "" {
+				fmt.Fprintf(&sb, ", line %s", end)
+			}
+			sb.WriteString(")")
 		}
 		sb.WriteString(" ---\n")
 		sb.WriteString(t.Input)

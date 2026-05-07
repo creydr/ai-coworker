@@ -330,23 +330,30 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 	for _, c := range comments {
 		content := strings.TrimSpace(strings.ReplaceAll(c.GetBody(), mention, ""))
 		ref := WithComment(NewRef(repoFullName, prNum), c.GetID(), "review_comment")
+		meta := map[string]string{
+			"vcs":             a.Name(),
+			"type":            "review_comment",
+			"repo":            repoFullName,
+			"issue_num":       strconv.Itoa(prNum),
+			"is_pr":           "true",
+			"pr_branch":       branch,
+			"path":            c.GetPath(),
+			"comment_id":      strconv.FormatInt(c.GetID(), 10),
+			"review_id":       reviewIDStr,
+			"installation_id": installIDStr,
+		}
+		if line := c.GetLine(); line != 0 {
+			meta["line"] = strconv.Itoa(line)
+		}
+		if startLine := c.GetStartLine(); startLine != 0 {
+			meta["start_line"] = strconv.Itoa(startLine)
+		}
 		events = append(events, domain.IncomingEvent{
 			ChannelRef: ref,
 			ThreadID:   threadID,
 			UserID:     userLogin,
 			Content:    content,
-			Metadata: map[string]string{
-				"vcs":             a.Name(),
-				"type":            "review_comment",
-				"repo":            repoFullName,
-				"issue_num":       strconv.Itoa(prNum),
-				"is_pr":           "true",
-				"pr_branch":       branch,
-				"path":            c.GetPath(),
-				"comment_id":      strconv.FormatInt(c.GetID(), 10),
-				"review_id":       reviewIDStr,
-				"installation_id": installIDStr,
-			},
+			Metadata:   meta,
 		})
 	}
 
