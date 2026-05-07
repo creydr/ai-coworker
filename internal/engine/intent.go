@@ -36,9 +36,9 @@ func (c *IntentClassifier) Classify(ctx context.Context, event domain.IncomingEv
 	sb.WriteString("You are an intent classifier. Given the following conversation, classify the latest message into exactly one of these categories:\n")
 	sb.WriteString("- code_task: the user is requesting code changes, implementation, or a coding task\n")
 	sb.WriteString("- review: the user is requesting a code review\n")
-	sb.WriteString("- info_lookup: the user is asking about something that requires looking up external information (e.g. a GitHub PR, issue, repository, URL, or project state)\n")
-	sb.WriteString("- question: the user is asking a question that can be answered from general knowledge or the current conversation context\n")
-	sb.WriteString("- discussion: the user wants to discuss or brainstorm something\n\n")
+	sb.WriteString("- info_lookup: the user is asking about something that requires looking up external information (e.g. a GitHub PR, issue, repository, URL, or project state). This includes follow-up questions about external resources mentioned earlier in the conversation, even if the latest message itself is short (e.g. \"^\" or \"what about this?\")\n")
+	sb.WriteString("- question: the user is asking a question that can be answered from general knowledge or the current conversation context, without needing to look up any external systems\n")
+	sb.WriteString("- discussion: the user wants to discuss or brainstorm something without needing concrete information from external systems\n\n")
 
 	if len(history) > 0 {
 		sb.WriteString("Conversation history:\n")
