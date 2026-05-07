@@ -72,3 +72,60 @@ func TestNewRef_Roundtrip(t *testing.T) {
 		t.Errorf("ThreadTS = %q, want %q", parsed.ThreadTS, "9999999999.999999")
 	}
 }
+
+func TestParseRef_MessageTS(t *testing.T) {
+	ref := NewRef("C12345", "1000000000.000000")
+	ref.Properties["message_ts"] = "1000000099.000000"
+
+	parsed := ParseRef(ref)
+
+	if parsed.ThreadTS != "1000000000.000000" {
+		t.Errorf("ThreadTS = %q, want %q", parsed.ThreadTS, "1000000000.000000")
+	}
+	if parsed.MessageTS != "1000000099.000000" {
+		t.Errorf("MessageTS = %q, want %q", parsed.MessageTS, "1000000099.000000")
+	}
+}
+
+func TestAcknowledgeTimestamp(t *testing.T) {
+	tests := []struct {
+		name   string
+		ref    domain.ChannelRef
+		wantTS string
+	}{
+		{
+			name: "follow-up message uses message_ts",
+			ref: domain.ChannelRef{
+				Properties: map[string]string{
+					"channel_id": "C123",
+					"thread_ts":  "1000.0000",
+					"message_ts": "2000.0000",
+				},
+			},
+			wantTS: "2000.0000",
+		},
+		{
+			name: "initial message falls back to thread_ts",
+			ref: domain.ChannelRef{
+				Properties: map[string]string{
+					"channel_id": "C123",
+					"thread_ts":  "1000.0000",
+				},
+			},
+			wantTS: "1000.0000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := ParseRef(tt.ref)
+			ts := s.MessageTS
+			if ts == "" {
+				ts = s.ThreadTS
+			}
+			if ts != tt.wantTS {
+				t.Errorf("acknowledge timestamp = %q, want %q", ts, tt.wantTS)
+			}
+		})
+	}
+}
