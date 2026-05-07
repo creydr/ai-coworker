@@ -87,6 +87,8 @@ The webhook server listens on port 8080. For local development, use a tool like 
 
 ## Slack App Setup
 
+The bot also integrates into Slack — ask it about PRs, issues, repositories or even ask it to provide a fix and it will respond in-thread:
+
 https://github.com/creydr/ai-coworker/raw/main/docs/video/demo-slack-github-integration.mp4
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app.
