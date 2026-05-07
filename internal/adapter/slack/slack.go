@@ -75,6 +75,13 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 				threadTS = mentionEvent.TimeStamp
 			}
 
+			if mentionEvent.ThreadTimeStamp != "" {
+				threadContext := a.fetchThreadContext(ctx, mentionEvent.Channel, threadTS, mentionEvent.TimeStamp)
+				if threadContext != "" {
+					text = threadContext + "\n[Current message:]\n" + text
+				}
+			}
+
 			threadID := fmt.Sprintf("slack-%s-%s", mentionEvent.Channel, threadTS)
 
 			ref := NewRef(mentionEvent.Channel, threadTS)
@@ -124,6 +131,41 @@ func (a *Adapter) Acknowledge(ctx context.Context, ref domain.ChannelRef) error 
 		return fmt.Errorf("failed to add slack reaction: %w", err)
 	}
 	return nil
+}
+
+func (a *Adapter) fetchThreadContext(ctx context.Context, channelID, threadTS, currentMessageTS string) string {
+	msgs, _, _, err := a.client.GetConversationRepliesContext(ctx, &slack.GetConversationRepliesParameters{
+		ChannelID: channelID,
+		Timestamp: threadTS,
+		Inclusive: true,
+	})
+	if err != nil {
+		slog.Warn("failed to fetch thread context", "channel", channelID, "thread_ts", threadTS, "error", err)
+		return ""
+	}
+
+	return formatThreadContext(msgs, currentMessageTS)
+}
+
+func formatThreadContext(msgs []slack.Message, currentMessageTS string) string {
+	var sb strings.Builder
+	for _, msg := range msgs {
+		if msg.Timestamp == currentMessageTS {
+			continue
+		}
+		if msg.Text == "" {
+			continue
+		}
+		user := msg.User
+		if user == "" {
+			user = "Bot"
+		}
+		fmt.Fprintf(&sb, "%s: %s\n", user, msg.Text)
+	}
+	if sb.Len() == 0 {
+		return ""
+	}
+	return "[Thread context:]\n" + sb.String()
 }
 
 func stripBotMention(text, botUserID string) string {
