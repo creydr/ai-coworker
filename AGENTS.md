@@ -30,12 +30,12 @@ cmd/ai-coworker/        Entry point, wires all components
 internal/
   adapter/              Adapter interface + EventHandler type
     github/             GitHub App webhooks, ChannelRef helpers (ref.go)
-    slack/              Slack Socket Mode, ChannelRef helpers (ref.go)
+    slack/              Slack Socket Mode, thread context, ChannelRef helpers (ref.go)
   config/               Koanf-based config (YAML + env vars)
   domain/               Core types: IncomingEvent, Thread, Task, Message
   engine/               Router, WorkerPool, IntentClassifier
   executor/
-    claudecode/         Sandbox executor (Docker + Claude Code CLI)
+    claudecode/         Sandbox executor (Docker/K8s + Claude Code CLI)
     llmexec/            Direct LLM executor
   llm/                  Provider interface
     anthropic/          Claude API + Vertex AI
@@ -44,14 +44,20 @@ internal/
     docker/             Docker container runtime
     kubernetes/         Kubernetes Job runtime
   store/                Store interface + PostgreSQL (migrations/)
+  vcs/                  VCS provider abstraction (token creation, clone URLs)
+    github/             GitHub VCS provider
 sandbox/                Dockerfile + entrypoint for sandbox image
 ```
 
 ## Key Patterns
 
 - **Thread-based conversations:** Events are matched to threads via `(channel, thread_key)`. All messages in a thread are loaded as conversation history for the LLM.
-- **Task claiming:** Workers use `SELECT ... FOR UPDATE SKIP LOCKED` to atomically claim pending tasks from PostgreSQL.
+- **Task claiming:** Workers use `pg_try_advisory_xact_lock` + `FOR UPDATE` to atomically claim pending tasks from PostgreSQL.
+- **Review task batching:** When a worker claims a review task, it absorbs sibling pending review tasks from the same thread (500ms debounce), merges them into a single prompt, and parses per-comment responses from the output.
+- **Intent classification:** Five intents — `code_task`, `review`, `info_lookup`, `question`, `discussion`. Code tasks, reviews, and info lookups route to the sandbox executor; questions and discussions route to the LLM executor.
+- **VCS providers:** The `vcs.Provider` interface decouples repo operations from specific platforms. The `vcs.Registry` resolves URLs to providers and creates scoped tokens. The Claude Code executor uses this to authenticate across multiple VCS platforms in a single sandbox session.
 - **ChannelRef:** Each adapter has typed `NewRef()`/`ParseRef()` helpers in `ref.go` to serialize adapter-specific state into the generic `domain.ChannelRef`.
+- **Batch event processing:** The `EventHandler` accepts `[]IncomingEvent`. The GitHub adapter batches a PR review body + inline comments into a single call.
 - **Configuration:** Koanf loads `config.yaml` first, then overrides with env vars prefixed `AI_COWORKER__` (double underscore = nesting, single underscore preserved in field names).
 - **LLM providers:** The `llm.Provider` interface abstracts Claude, Vertex AI, and OpenAI-compatible backends. Executors interact with providers, never with SDK clients directly.
 
