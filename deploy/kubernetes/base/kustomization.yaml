@@ -19,5 +19,5 @@ labels:
     includeSelectors: false
 
 images:
-  - name: quay.io/creydr/ai-coworker
+  - name: ghcr.io/creydr/ai-coworker
     newTag: latest

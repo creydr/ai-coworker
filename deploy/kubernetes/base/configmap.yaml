@@ -13,7 +13,7 @@ data:
 
     sandbox:
       runtime: "kubernetes"
-      image: "quay.io/creydr/ai-coworker-sandbox:latest"
+      image: "ghcr.io/creydr/ai-coworker-sandbox:latest"
       timeoutSeconds: 600
       cpuLimit: "2"
       memoryLimit: "2Gi"

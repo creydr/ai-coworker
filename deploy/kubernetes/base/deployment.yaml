@@ -17,7 +17,7 @@ spec:
       serviceAccountName: ai-coworker
       containers:
         - name: ai-coworker
-          image: quay.io/creydr/ai-coworker:latest
+          image: ghcr.io/creydr/ai-coworker:latest
           ports:
             - containerPort: 8080
               name: http

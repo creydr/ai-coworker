@@ -3,8 +3,8 @@ set -euo pipefail
 
 CLUSTER_NAME="${KIND_CLUSTER_NAME:-ai-coworker}"
 NAMESPACE="${KIND_NAMESPACE:-ai-coworker}"
-IMAGE="${IMAGE:-quay.io/creydr/ai-coworker:latest}"
-SANDBOX_IMAGE="${SANDBOX_IMAGE:-quay.io/creydr/ai-coworker-sandbox:latest}"
+IMAGE="${IMAGE:-ghcr.io/creydr/ai-coworker:latest}"
+SANDBOX_IMAGE="${SANDBOX_IMAGE:-ghcr.io/creydr/ai-coworker-sandbox:latest}"
 
 cmd_create() {
   kind create cluster --name "${CLUSTER_NAME}"
@@ -76,8 +76,8 @@ Commands:
 Environment variables:
   KIND_CLUSTER_NAME   Cluster name (default: ai-coworker)
   KIND_NAMESPACE      Namespace (default: ai-coworker)
-  IMAGE               Service image tag (default: quay.io/creydr/ai-coworker:latest)
-  SANDBOX_IMAGE       Sandbox image tag (default: quay.io/creydr/ai-coworker-sandbox:latest)
+  IMAGE               Service image tag (default: ghcr.io/creydr/ai-coworker:latest)
+  SANDBOX_IMAGE       Sandbox image tag (default: ghcr.io/creydr/ai-coworker-sandbox:latest)
   SMEE_URL            smee.io channel URL (required for --smee)
   AI_COWORKER__*      All env vars with this prefix are injected into the K8s secret
                       (used by --deploy, supports multiline values like PEM keys)
