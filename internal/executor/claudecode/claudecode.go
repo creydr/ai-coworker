@@ -52,88 +52,14 @@ func New(cfg Config) *Executor {
 
 func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*executor.Result, error) {
 	prompt := buildPrompt(execCtx)
+	primaryProvider, repo, branch, allMatches := e.resolveVCSContext(execCtx)
 
 	cloneURL := ""
-	branch := ""
-	repo := ""
-	var primaryProvider vcs.Provider
-
-	if execCtx.Event != nil && execCtx.Event.Metadata != nil {
-		repo = execCtx.Event.Metadata["repo"]
-		branch = execCtx.Event.Metadata["pr_branch"]
-
-		// Tier 1: event came from a VCS adapter — provider is known
-		if repo != "" {
-			if sourceVCS := execCtx.Event.Metadata["vcs"]; sourceVCS != "" && e.vcsRegistry != nil {
-				primaryProvider, _ = e.vcsRegistry.ByName(sourceVCS)
-			}
-		}
-	}
-
-	// Tier 2: extract repo URLs from message content + thread history.
-	// This enables non-VCS adapters (e.g. Slack) to trigger code tasks
-	// when the user pastes a repo URL in their message.
-	var allMatches []vcs.RepoMatch
-	if e.vcsRegistry != nil {
-		if execCtx.Task != nil {
-			allMatches = append(allMatches, e.vcsRegistry.ExtractReposFromText(execCtx.Task.Input)...)
-		}
-		for _, msg := range execCtx.Messages {
-			allMatches = append(allMatches, e.vcsRegistry.ExtractReposFromText(msg.Content)...)
-		}
-		if repo == "" && len(allMatches) > 0 {
-			repo = allMatches[0].Repo
-			primaryProvider = allMatches[0].Provider
-		}
-	}
-
 	if primaryProvider != nil && repo != "" {
 		cloneURL = primaryProvider.CloneURL(repo)
 	}
 
-	// Copy envVars so we don't mutate the shared map.
-	envVars := make(map[string]string, len(e.envVars))
-	for k, v := range e.envVars {
-		envVars[k] = v
-	}
-
-	// Collect tokens for all involved providers so the sandbox can access
-	// repos across multiple VCS platforms in a single session.
-	if e.vcsRegistry != nil {
-		seen := map[string]bool{}
-		var credURLs []string
-
-		if primaryProvider != nil && repo != "" {
-			token, err := primaryProvider.CreateTokenForRepo(ctx, repo)
-			if err != nil {
-				slog.Warn("failed to get VCS token for sandbox", "provider", primaryProvider.Name(), "repo", repo, "error", err)
-			} else if token != "" {
-				envVars[primaryProvider.TokenEnvVar()] = token
-				credURLs = append(credURLs, primaryProvider.CredentialURL(token))
-				seen[primaryProvider.Name()] = true
-			}
-		}
-
-		for _, match := range allMatches {
-			if seen[match.Provider.Name()] {
-				continue
-			}
-			seen[match.Provider.Name()] = true
-			token, err := match.Provider.CreateTokenForRepo(ctx, match.Repo)
-			if err != nil {
-				slog.Warn("failed to get VCS token for sandbox", "provider", match.Provider.Name(), "repo", match.Repo, "error", err)
-				continue
-			}
-			if token != "" {
-				envVars[match.Provider.TokenEnvVar()] = token
-				credURLs = append(credURLs, match.Provider.CredentialURL(token))
-			}
-		}
-
-		if len(credURLs) > 0 {
-			envVars["VCS_CREDENTIAL_URLS"] = strings.Join(credURLs, "\n")
-		}
-	}
+	envVars := e.collectVCSTokens(ctx, primaryProvider, repo, allMatches)
 
 	req := sandbox.ExecRequest{
 		Image:    e.image,
@@ -161,6 +87,95 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 	return &executor.Result{
 		Response: result.Output,
 	}, nil
+}
+
+// resolveVCSContext determines the primary VCS provider and repository using
+// two tiers: (1) event metadata from a VCS adapter, (2) repo URLs extracted
+// from message content — enabling non-VCS adapters (e.g. Slack) to trigger
+// code tasks when the user pastes a repo URL.
+func (e *Executor) resolveVCSContext(execCtx *executor.Context) (vcs.Provider, string, string, []vcs.RepoMatch) {
+	var primaryProvider vcs.Provider
+	var repo, branch string
+
+	// Tier 1: event came from a VCS adapter — provider is known.
+	if execCtx.Event != nil && execCtx.Event.Metadata != nil {
+		repo = execCtx.Event.Metadata["repo"]
+		branch = execCtx.Event.Metadata["pr_branch"]
+
+		if repo != "" {
+			if sourceVCS := execCtx.Event.Metadata["vcs"]; sourceVCS != "" && e.vcsRegistry != nil {
+				primaryProvider, _ = e.vcsRegistry.ByName(sourceVCS)
+			}
+		}
+	}
+
+	// Tier 2: extract repo URLs from message content + thread history.
+	var allMatches []vcs.RepoMatch
+	if e.vcsRegistry != nil {
+		if execCtx.Task != nil {
+			allMatches = append(allMatches, e.vcsRegistry.ExtractReposFromText(execCtx.Task.Input)...)
+		}
+		for _, msg := range execCtx.Messages {
+			allMatches = append(allMatches, e.vcsRegistry.ExtractReposFromText(msg.Content)...)
+		}
+		if repo == "" && len(allMatches) > 0 {
+			repo = allMatches[0].Repo
+			primaryProvider = allMatches[0].Provider
+		}
+	}
+
+	return primaryProvider, repo, branch, allMatches
+}
+
+// collectVCSTokens copies base env vars and adds scoped tokens for all
+// involved VCS providers so the sandbox can access repos across multiple
+// platforms in a single session.
+func (e *Executor) collectVCSTokens(ctx context.Context, primaryProvider vcs.Provider, repo string, allMatches []vcs.RepoMatch) map[string]string {
+	// Copy envVars so we don't mutate the shared map.
+	envVars := make(map[string]string, len(e.envVars))
+	for k, v := range e.envVars {
+		envVars[k] = v
+	}
+
+	if e.vcsRegistry == nil {
+		return envVars
+	}
+
+	seen := map[string]bool{}
+	var credURLs []string
+
+	if primaryProvider != nil && repo != "" {
+		token, err := primaryProvider.CreateTokenForRepo(ctx, repo)
+		if err != nil {
+			slog.Warn("failed to get VCS token for sandbox", "provider", primaryProvider.Name(), "repo", repo, "error", err)
+		} else if token != "" {
+			envVars[primaryProvider.TokenEnvVar()] = token
+			credURLs = append(credURLs, primaryProvider.CredentialURL(token))
+			seen[primaryProvider.Name()] = true
+		}
+	}
+
+	for _, match := range allMatches {
+		if seen[match.Provider.Name()] {
+			continue
+		}
+		seen[match.Provider.Name()] = true
+		token, err := match.Provider.CreateTokenForRepo(ctx, match.Repo)
+		if err != nil {
+			slog.Warn("failed to get VCS token for sandbox", "provider", match.Provider.Name(), "repo", match.Repo, "error", err)
+			continue
+		}
+		if token != "" {
+			envVars[match.Provider.TokenEnvVar()] = token
+			credURLs = append(credURLs, match.Provider.CredentialURL(token))
+		}
+	}
+
+	if len(credURLs) > 0 {
+		envVars["VCS_CREDENTIAL_URLS"] = strings.Join(credURLs, "\n")
+	}
+
+	return envVars
 }
 
 func buildPrompt(execCtx *executor.Context) string {

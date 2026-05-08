@@ -840,6 +840,60 @@ func TestHandlePRReview_EmptyBodyWithComments(t *testing.T) {
 	}
 }
 
+func TestIsReviewRelevant(t *testing.T) {
+	a := newTestAdapter(t, "secret", "ai-coworker")
+	mention := "@ai-coworker"
+
+	tests := []struct {
+		name     string
+		body     string
+		comments []*gh.PullRequestComment
+		isBotPR  bool
+		want     bool
+	}{
+		{
+			name: "mention in body",
+			body: "@ai-coworker fix this",
+			want: true,
+		},
+		{
+			name:    "bot PR without mention",
+			body:    "looks good",
+			isBotPR: true,
+			want:    true,
+		},
+		{
+			name: "mention in comment",
+			body: "some feedback",
+			comments: []*gh.PullRequestComment{
+				{Body: gh.Ptr("@ai-coworker fix this")},
+			},
+			want: true,
+		},
+		{
+			name: "no mention anywhere",
+			body: "some feedback",
+			comments: []*gh.PullRequestComment{
+				{Body: gh.Ptr("looks good")},
+			},
+			want: false,
+		},
+		{
+			name: "empty everything",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := a.isReviewRelevant(tt.body, tt.comments, mention, tt.isBotPR)
+			if got != tt.want {
+				t.Errorf("isReviewRelevant() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestHandlePRReview_MentionOnlyInComment(t *testing.T) {
 	const secret = "test-secret"
 	a := newTestAdapter(t, secret, "ai-coworker")

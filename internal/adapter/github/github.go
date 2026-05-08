@@ -276,20 +276,9 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 		return nil
 	}
 
-	// Determine relevance: the bot must be mentioned in the review body
-	// or in any inline comment, unless the PR itself belongs to the bot.
 	mention := "@" + a.botUsername
 	isBotPR := a.isBotUser(e.GetPullRequest().GetUser().GetLogin())
-	mentioned := strings.Contains(body, mention)
-	if !mentioned && !isBotPR {
-		for _, c := range comments {
-			if strings.Contains(c.GetBody(), mention) {
-				mentioned = true
-				break
-			}
-		}
-	}
-	if !mentioned && !isBotPR {
+	if !a.isReviewRelevant(body, comments, mention, isBotPR) {
 		return nil
 	}
 
@@ -299,10 +288,33 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 		return nil
 	}
 
+	events := a.buildReviewEvents(e, comments, mention, userLogin, repoFullName, prNum, installationID, reviewID)
+	return handler(ctx, events)
+}
+
+// isReviewRelevant returns true if the bot is mentioned in the review body or
+// any inline comment, or if the PR belongs to the bot.
+func (a *Adapter) isReviewRelevant(body string, comments []*gh.PullRequestComment, mention string, isBotPR bool) bool {
+	if strings.Contains(body, mention) {
+		return true
+	}
+	if isBotPR {
+		return true
+	}
+	for _, c := range comments {
+		if strings.Contains(c.GetBody(), mention) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Adapter) buildReviewEvents(e *gh.PullRequestReviewEvent, comments []*gh.PullRequestComment, mention, userLogin, repoFullName string, prNum int, installationID, reviewID int64) []domain.IncomingEvent {
 	threadID := fmt.Sprintf("github-%s-%d", repoFullName, prNum)
 	branch := e.GetPullRequest().GetHead().GetRef()
 	installIDStr := strconv.FormatInt(installationID, 10)
 	reviewIDStr := strconv.FormatInt(reviewID, 10)
+	body := e.GetReview().GetBody()
 
 	var events []domain.IncomingEvent
 
@@ -357,7 +369,7 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 		})
 	}
 
-	return handler(ctx, events)
+	return events
 }
 
 func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, message string) error {

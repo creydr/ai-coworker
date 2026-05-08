@@ -45,48 +45,25 @@ func (r *Runtime) Close() error {
 func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.ExecResult, error) {
 	sandbox.PrepareEnvVars(&req)
 
-	env := buildEnv(req.EnvVars)
-
 	cfg := &container.Config{
 		Image: req.Image,
-		Env:   env,
+		Env:   buildEnv(req.EnvVars),
 	}
 
-	var resources container.Resources
-
-	if req.CPULimit != "" {
-		cpuFloat, err := strconv.ParseFloat(req.CPULimit, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid CPU limit %q: %w", req.CPULimit, err)
-		}
-		resources.NanoCPUs = int64(cpuFloat * 1e9)
-	}
-
-	if req.MemLimit != "" {
-		mem, err := parseMemLimit(req.MemLimit)
-		if err != nil {
-			return nil, fmt.Errorf("invalid memory limit %q: %w", req.MemLimit, err)
-		}
-		resources.Memory = mem
-	}
-
-	promptFile, err := os.CreateTemp("", "prompt-*.txt")
+	resources, err := parseResources(req.CPULimit, req.MemLimit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create prompt file: %w", err)
+		return nil, err
 	}
-	defer os.Remove(promptFile.Name())
-	if _, err := promptFile.WriteString(req.Prompt); err != nil {
-		_ = promptFile.Close()
-		return nil, fmt.Errorf("failed to write prompt file: %w", err)
+
+	promptPath, promptCleanup, err := preparePromptFile(req.Prompt)
+	if err != nil {
+		return nil, err
 	}
-	_ = promptFile.Close()
-	if err := os.Chmod(promptFile.Name(), 0644); err != nil {
-		return nil, fmt.Errorf("failed to chmod prompt file: %w", err)
-	}
+	defer promptCleanup()
 
 	binds := make([]string, len(req.Binds), len(req.Binds)+1)
 	copy(binds, req.Binds)
-	binds = append(binds, promptFile.Name()+":/tmp/prompt.txt:ro")
+	binds = append(binds, promptPath+":/tmp/prompt.txt:ro")
 	hostCfg := &container.HostConfig{
 		Resources: resources,
 		Binds:     binds,
@@ -108,6 +85,50 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 	}
 	defer cleanup()
 
+	return r.waitAndCollectLogs(ctx, containerID)
+}
+
+func parseResources(cpuLimit, memLimit string) (container.Resources, error) {
+	var resources container.Resources
+	if cpuLimit != "" {
+		cpuFloat, err := strconv.ParseFloat(cpuLimit, 64)
+		if err != nil {
+			return resources, fmt.Errorf("invalid CPU limit %q: %w", cpuLimit, err)
+		}
+		resources.NanoCPUs = int64(cpuFloat * 1e9)
+	}
+	if memLimit != "" {
+		mem, err := parseMemLimit(memLimit)
+		if err != nil {
+			return resources, fmt.Errorf("invalid memory limit %q: %w", memLimit, err)
+		}
+		resources.Memory = mem
+	}
+	return resources, nil
+}
+
+func preparePromptFile(prompt string) (string, func(), error) {
+	f, err := os.CreateTemp("", "prompt-*.txt")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create prompt file: %w", err)
+	}
+	path := f.Name()
+	cleanup := func() { _ = os.Remove(path) }
+
+	if _, err := f.WriteString(prompt); err != nil {
+		_ = f.Close()
+		cleanup()
+		return "", nil, fmt.Errorf("failed to write prompt file: %w", err)
+	}
+	_ = f.Close()
+	if err := os.Chmod(path, 0644); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("failed to chmod prompt file: %w", err)
+	}
+	return path, cleanup, nil
+}
+
+func (r *Runtime) waitAndCollectLogs(ctx context.Context, containerID string) (*sandbox.ExecResult, error) {
 	shortID := containerID[:12]
 
 	statusCh, errCh := r.client.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
