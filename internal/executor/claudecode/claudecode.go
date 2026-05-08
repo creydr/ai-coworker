@@ -183,7 +183,7 @@ func buildPrompt(execCtx *executor.Context) string {
 
 	sb.WriteString("You are an AI coworker that helps with software development tasks.\n")
 	sb.WriteString("You have access to the repository and can make changes as needed.\n")
-	sb.WriteString("Use the `gh` CLI to fetch issue or PR details (e.g. `gh issue view <number>`).\n\n")
+	sb.WriteString("Use the `gh` CLI to fetch issue or PR details (e.g. `gh issue view <number>`) and to check CI status (e.g. `gh run list`, `gh run view <id> --log-failed`).\n\n")
 
 	isPR := false
 	if execCtx.Event != nil && execCtx.Event.Metadata != nil {

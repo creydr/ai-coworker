@@ -30,7 +30,7 @@ To use the GitHub handler, you'll need a [GitHub App](#github-app-setup). For th
 
 ## GitHub App Setup
 
-1. **[Create the GitHub App](https://github.com/settings/apps/new?name=my-ai-coworker&url=https://github.com/creydr/ai-coworker&description=Autonomous+AI+agent+for+software+development+tasks&public=false&webhook_active=true&contents=write&issues=write&pull_requests=write&metadata=read&events[]=issue_comment&events[]=pull_request_review&events[]=pull_request_review_comment)** — this link pre-fills the required permissions and events. Fill in:
+1. **[Create the GitHub App](https://github.com/settings/apps/new?name=my-ai-coworker&url=https://github.com/creydr/ai-coworker&description=Autonomous+AI+agent+for+software+development+tasks&public=false&webhook_active=true&actions=read&contents=write&issues=write&pull_requests=write&metadata=read&events[]=issue_comment&events[]=pull_request_review&events[]=pull_request_review_comment)** — this link pre-fills the required permissions and events. Fill in:
    - **Webhook URL:** your server's public URL + `/webhook/github` (can be configured later)
    - **Webhook secret:** generate one via `openssl rand -hex 32`
 
@@ -45,6 +45,7 @@ To use the GitHub handler, you'll need a [GitHub App](#github-app-setup). For th
       - **Webhook secret:** generate a random secret (e.g. via `openssl rand -hex 32`)
    3. Set permissions:
       - **Repository permissions:**
+        - Actions: Read-only
         - Contents: Read & write
         - Issues: Read & write
         - Pull requests: Read & write
