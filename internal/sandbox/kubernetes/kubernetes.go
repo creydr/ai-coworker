@@ -51,15 +51,7 @@ func (r *Runtime) Close() error {
 func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.ExecResult, error) {
 	name := "sandbox-" + uuid.New().String()[:8]
 
-	if req.EnvVars == nil {
-		req.EnvVars = make(map[string]string)
-	}
-	if req.CloneURL != "" {
-		req.EnvVars["CLONE_URL"] = req.CloneURL
-		if req.Branch != "" {
-			req.EnvVars["CLONE_BRANCH"] = req.Branch
-		}
-	}
+	sandbox.PrepareEnvVars(&req)
 
 	if req.Timeout > 0 {
 		var cancel context.CancelFunc
