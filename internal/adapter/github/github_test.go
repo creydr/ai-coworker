@@ -938,3 +938,56 @@ func TestHandlePRReview_MentionOnlyInComment(t *testing.T) {
 		t.Errorf("event[1] type = %q, want %q", events[1].Metadata["type"], "review_comment")
 	}
 }
+
+func TestHandlePRReview_ReplyCommentResolvesLineInfo(t *testing.T) {
+	const secret = "test-secret"
+	a := newTestAdapter(t, secret, "ai-coworker")
+
+	// Review contains a reply comment (in_reply_to_id set, line null) —
+	// ListReviewComments returns null line info for replies.
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]interface{}{
+			{"id": 333, "body": "still broken", "path": ".github/workflows/test.yml", "in_reply_to_id": 111},
+		})
+	})
+	// Parent comment endpoint returns line info.
+	apiMux.HandleFunc("/repos/org/repo/pulls/comments/111", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": 111, "body": "fix this", "path": ".github/workflows/test.yml", "line": 10, "start_line": 5,
+		})
+	})
+	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
+	defer mockAPI.Close()
+
+	var events []domain.IncomingEvent
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
+		events = append(events, evs...)
+		return nil
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
+		a.handleWebhook(r.Context(), w, r, handler)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	payload := prReviewPayloadWithPRAuthor(t, "", "org/repo", "reviewer", "ai-coworker[bot]", 3, 55555, 77777, "feat/fix", "commented")
+	resp := sendWebhook(t, ts, "pull_request_review", payload, secret)
+	_ = resp.Body.Close()
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+
+	if events[0].Metadata["line"] != "10" {
+		t.Errorf("line = %q, want %q (should resolve from parent)", events[0].Metadata["line"], "10")
+	}
+	if events[0].Metadata["start_line"] != "5" {
+		t.Errorf("start_line = %q, want %q (should resolve from parent)", events[0].Metadata["start_line"], "5")
+	}
+	if events[0].Metadata["path"] != ".github/workflows/test.yml" {
+		t.Errorf("path = %q, want %q", events[0].Metadata["path"], ".github/workflows/test.yml")
+	}
+}
