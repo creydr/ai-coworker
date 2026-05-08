@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"os"
 	"sort"
 	"testing"
 )
@@ -56,6 +57,69 @@ func TestBuildEnv(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseResources(t *testing.T) {
+	t.Run("valid CPU and memory", func(t *testing.T) {
+		res, err := parseResources("2.0", "4Gi")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.NanoCPUs != 2e9 {
+			t.Errorf("NanoCPUs = %d, want %d", res.NanoCPUs, int64(2e9))
+		}
+		if res.Memory != 4*1024*1024*1024 {
+			t.Errorf("Memory = %d, want %d", res.Memory, int64(4*1024*1024*1024))
+		}
+	})
+
+	t.Run("empty limits", func(t *testing.T) {
+		res, err := parseResources("", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.NanoCPUs != 0 || res.Memory != 0 {
+			t.Errorf("expected zero resources, got CPU=%d, Mem=%d", res.NanoCPUs, res.Memory)
+		}
+	})
+
+	t.Run("invalid CPU", func(t *testing.T) {
+		_, err := parseResources("abc", "")
+		if err == nil {
+			t.Fatal("expected error for invalid CPU limit")
+		}
+	})
+
+	t.Run("invalid memory", func(t *testing.T) {
+		_, err := parseResources("", "invalid")
+		if err == nil {
+			t.Fatal("expected error for invalid memory limit")
+		}
+	})
+}
+
+func TestPreparePromptFile(t *testing.T) {
+	path, cleanup, err := preparePromptFile("test prompt content")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read prompt file: %v", err)
+	}
+	if string(data) != "test prompt content" {
+		t.Errorf("prompt file content = %q, want %q", string(data), "test prompt content")
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("failed to stat prompt file: %v", err)
+	}
+	if info.Mode().Perm() != 0644 {
+		t.Errorf("prompt file permissions = %o, want 0644", info.Mode().Perm())
 	}
 }
 
