@@ -240,7 +240,7 @@ The KinD overlay (`deploy/kubernetes/overlays/kind/`) composes the base manifest
 
 | Variable | Default | Description |
 |---|---|---|
-| `REGISTRY` | `quay.io/creydr` | Container image registry and namespace |
+| `REGISTRY` | `ghcr.io/creydr` | Container image registry and namespace |
 | `IMAGE` | `$(REGISTRY)/ai-coworker:latest` | Service image |
 | `SANDBOX_IMAGE` | `$(REGISTRY)/ai-coworker-sandbox:latest` | Sandbox image |
 

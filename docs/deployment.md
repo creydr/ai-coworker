@@ -20,7 +20,7 @@ This runs PostgreSQL 16 via Docker Compose. The schema is applied automatically 
 
 ### 2. Sandbox image
 
-Pre-built multi-arch images are published to `quay.io/creydr/ai-coworker-sandbox` on every push to main. The default config already references this image.
+Pre-built multi-arch images are published to `ghcr.io/creydr/ai-coworker-sandbox` on every push to main. The default config already references this image.
 
 To build locally instead:
 
@@ -50,7 +50,7 @@ github:
 
 sandbox:
   runtime: "docker"
-  image: "quay.io/creydr/ai-coworker-sandbox:latest"
+  image: "ghcr.io/creydr/ai-coworker-sandbox:latest"
   timeoutSeconds: 600
   cpuLimit: "2"
   memoryLimit: "2Gi"
@@ -194,7 +194,7 @@ The Deployment mounts `config.yaml` from a ConfigMap and injects secrets as envi
 ### Customizing the image tag
 
 ```sh
-cd deploy/kubernetes/base && kustomize edit set image quay.io/creydr/ai-coworker:v1.0.0
+cd deploy/kubernetes/base && kustomize edit set image ghcr.io/creydr/ai-coworker:v1.0.0
 ```
 
 ### Webhook delivery

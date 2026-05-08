@@ -1,6 +1,6 @@
 .PHONY: build run test docker sandbox-image dev-db lint kind-create kind-load kind-deploy kind-smee kind-delete
 
-REGISTRY ?= quay.io/creydr
+REGISTRY ?= ghcr.io/creydr
 IMAGE ?= $(REGISTRY)/ai-coworker:latest
 SANDBOX_IMAGE ?= $(REGISTRY)/ai-coworker-sandbox:latest
 
