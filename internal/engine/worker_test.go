@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -573,7 +574,9 @@ func TestWorker_BatchedReviewRouting(t *testing.T) {
 	router.RegisterAdapter(adpt)
 	wp := &WorkerPool{store: ms, router: router}
 	allTasks := append([]*domain.Task{primary}, absorbed...)
-	wp.routeBatchedResponses(context.Background(), "worker-0", thread, allTasks, codeExec.result.Response)
+	if err := wp.routeBatchedResponses(context.Background(), thread, allTasks, codeExec.result.Response); err != nil {
+		t.Fatalf("routeBatchedResponses returned error: %v", err)
+	}
 
 	if len(adpt.responseCalls) != 3 {
 		t.Fatalf("expected 3 response calls, got %d", len(adpt.responseCalls))
@@ -637,7 +640,9 @@ func TestWorker_BatchedReviewFallback(t *testing.T) {
 
 	fullResponse := "I fixed everything in one go."
 	allTasks := append([]*domain.Task{primary}, absorbed...)
-	wp.routeBatchedResponses(context.Background(), "worker-0", thread, allTasks, fullResponse)
+	if err := wp.routeBatchedResponses(context.Background(), thread, allTasks, fullResponse); err != nil {
+		t.Fatalf("routeBatchedResponses returned error: %v", err)
+	}
 
 	if len(adpt.responseCalls) != 2 {
 		t.Fatalf("expected 2 response calls, got %d", len(adpt.responseCalls))
@@ -739,6 +744,100 @@ func TestWorker_ReviewAbsorbsSiblings(t *testing.T) {
 
 	if siblingTask.Status != domain.TaskCompleted {
 		t.Errorf("sibling task status = %q, want completed", siblingTask.Status)
+	}
+}
+
+func TestWorker_CompletionUpdateFailure_NoResponse(t *testing.T) {
+	ms, adpt, _, _, wp := newWorkerTestSetup()
+
+	thread := &domain.Thread{
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#1",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "1",
+			},
+		},
+		Status: domain.ThreadActive,
+	}
+	ms.threads["thread-1"] = thread
+
+	// Make UpdateTask fail only when marking as completed (not for intent update).
+	updateCalls := 0
+	ms.updateTaskFunc = func(_ context.Context, t *domain.Task) error {
+		updateCalls++
+		if t.Status == domain.TaskCompleted {
+			return fmt.Errorf("database unavailable")
+		}
+		return nil
+	}
+
+	task := &domain.Task{
+		ID:       "task-1",
+		ThreadID: "thread-1",
+		Status:   domain.TaskInProgress,
+		Input:    "do it",
+	}
+
+	wp.processTask(context.Background(), "worker-0", task)
+
+	if len(adpt.responseCalls) != 0 {
+		t.Fatalf("expected 0 response calls when completion update fails, got %d", len(adpt.responseCalls))
+	}
+}
+
+func TestWorker_BatchedCompletionUpdateFailure(t *testing.T) {
+	ms, _, _, _, _ := newWorkerTestSetup()
+
+	thread := &domain.Thread{
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#7",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "7",
+			},
+		},
+		Status: domain.ThreadActive,
+	}
+	ms.threads["thread-1"] = thread
+
+	ms.updateTaskFunc = func(_ context.Context, t *domain.Task) error {
+		if t.Status == domain.TaskCompleted {
+			return fmt.Errorf("database unavailable")
+		}
+		return nil
+	}
+
+	adpt := &mockAdapter{name: "github"}
+	router := NewRouter(ms)
+	router.RegisterAdapter(adpt)
+	wp := &WorkerPool{store: ms, router: router}
+
+	primary := &domain.Task{
+		ID:       "task-1",
+		ThreadID: "thread-1",
+		Status:   domain.TaskInProgress,
+		Input:    "fix it",
+		Metadata: map[string]string{"type": "review"},
+	}
+	absorbed := []*domain.Task{
+		{
+			ID:       "task-2",
+			ThreadID: "thread-1",
+			Status:   domain.TaskInProgress,
+			Input:    "also this",
+			Metadata: map[string]string{"type": "review_comment"},
+		},
+	}
+
+	allTasks := append([]*domain.Task{primary}, absorbed...)
+	err := wp.routeBatchedResponses(context.Background(), thread, allTasks, "response")
+	if err == nil {
+		t.Fatal("expected error from routeBatchedResponses when completion update fails")
 	}
 }
 

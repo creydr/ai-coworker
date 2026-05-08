@@ -171,11 +171,13 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 	}
 	slog.Info("task completed", "worker", workerID, "task", task.ID, "response_len", len(result.Response))
 
-	// Mark task as completed.
+	// Mark task as completed before sending the response to prevent
+	// duplicate processing if the update fails.
 	task.Status = domain.TaskCompleted
 	task.Result = result.Response
 	if err := wp.store.UpdateTask(ctx, task); err != nil {
 		slog.Error("error updating task to completed", "worker", workerID, "task", task.ID, "error", err)
+		return
 	}
 
 	// Store the assistant response as a message.
@@ -190,7 +192,9 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 
 	if len(absorbedTasks) > 0 {
 		allTasks := append([]*domain.Task{task}, absorbedTasks...)
-		wp.routeBatchedResponses(ctx, workerID, thread, allTasks, result.Response)
+		if err := wp.routeBatchedResponses(ctx, thread, allTasks, result.Response); err != nil {
+			slog.Error("error completing batched tasks", "worker", workerID, "task", task.ID, "error", err)
+		}
 	} else {
 		wp.routeResponse(ctx, thread, task, result.Response)
 	}
@@ -329,7 +333,7 @@ func parseCommentResponses(output string) map[int]string {
 	return responses
 }
 
-func (wp *WorkerPool) routeBatchedResponses(ctx context.Context, workerID string, thread *domain.Thread, allTasks []*domain.Task, fullResponse string) {
+func (wp *WorkerPool) routeBatchedResponses(ctx context.Context, thread *domain.Thread, allTasks []*domain.Task, fullResponse string) error {
 	perComment := parseCommentResponses(fullResponse)
 
 	for i, t := range allTasks {
@@ -344,14 +348,17 @@ func (wp *WorkerPool) routeBatchedResponses(ctx context.Context, workerID string
 			response = fullResponse
 		}
 
-		wp.routeResponse(ctx, thread, t, response)
-
+		// Mark absorbed tasks as completed before routing the response
+		// to prevent duplicate processing.
 		if i > 0 {
 			t.Status = domain.TaskCompleted
 			t.Result = response
 			if err := wp.store.UpdateTask(ctx, t); err != nil {
-				slog.Error("error completing absorbed task", "worker", workerID, "task", t.ID, "error", err)
+				return fmt.Errorf("completing absorbed task %s: %w", t.ID, err)
 			}
 		}
+
+		wp.routeResponse(ctx, thread, t, response)
 	}
+	return nil
 }
