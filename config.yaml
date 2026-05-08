@@ -22,5 +22,7 @@ sandbox:
   memoryLimit: "2Gi"
   # namespace: "ai-coworker"      # required for kubernetes runtime
   # serviceAccount: ""            # optional SA for sandbox job pods
+  # skillImages:                  # OCI skill images to mount into sandbox
+  #   - "quay.io/myorg/my-skills:latest"
 
 workers: 4

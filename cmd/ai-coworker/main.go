@@ -149,6 +149,7 @@ func main() {
 		TimeoutSeconds: cfg.Sandbox.TimeoutSeconds,
 		CPULimit:       cfg.Sandbox.CPULimit,
 		MemoryLimit:    cfg.Sandbox.MemoryLimit,
+		SkillImages:    cfg.Sandbox.SkillImages,
 		VCSRegistry:    vcsRegistry,
 	})
 

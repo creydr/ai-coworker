@@ -75,13 +75,14 @@ type GitHubConfig struct {
 }
 
 type SandboxConfig struct {
-	Runtime        string `koanf:"runtime"`
-	Image          string `koanf:"image"`
-	TimeoutSeconds int    `koanf:"timeoutSeconds"`
-	CPULimit       string `koanf:"cpuLimit"`
-	MemoryLimit    string `koanf:"memoryLimit"`
-	Namespace      string `koanf:"namespace"`
-	ServiceAccount string `koanf:"serviceAccount"`
+	Runtime        string   `koanf:"runtime"`
+	Image          string   `koanf:"image"`
+	TimeoutSeconds int      `koanf:"timeoutSeconds"`
+	CPULimit       string   `koanf:"cpuLimit"`
+	MemoryLimit    string   `koanf:"memoryLimit"`
+	Namespace      string   `koanf:"namespace"`
+	ServiceAccount string   `koanf:"serviceAccount"`
+	SkillImages    []string `koanf:"skillImages"`
 }
 
 func Load(path string) (*Config, error) {
