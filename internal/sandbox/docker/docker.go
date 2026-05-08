@@ -236,7 +236,9 @@ func (r *Runtime) extractSkillImage(ctx context.Context, img string, index int) 
 		return "", fmt.Errorf("failed to create container from skill image: %w", err)
 	}
 	defer func() {
-		_ = r.client.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{})
+		if err := r.client.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{}); err != nil {
+			slog.Warn("failed to remove skill extraction container", "id", resp.ID, "error", err)
+		}
 	}()
 
 	dir, err := os.MkdirTemp("", fmt.Sprintf("ai-coworker-skills-%d-*", index))
@@ -302,11 +304,15 @@ func extractTar(r io.Reader, dst string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(f, io.LimitReader(tr, maxSkillFileSize+1)); err != nil {
+			n, err := io.Copy(f, io.LimitReader(tr, maxSkillFileSize+1))
+			if err != nil {
 				_ = f.Close()
 				return err
 			}
 			_ = f.Close()
+			if n > maxSkillFileSize {
+				return fmt.Errorf("tar entry %q exceeds %d byte limit", header.Name, maxSkillFileSize)
+			}
 		case tar.TypeSymlink:
 			linkTarget := header.Linkname
 			if filepath.IsAbs(linkTarget) {

@@ -424,3 +424,30 @@ func TestExtractTarOversizedFile(t *testing.T) {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
+
+func TestExtractTarOversizedActualData(t *testing.T) {
+	oversized := make([]byte, maxSkillFileSize+1)
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	hdr := &tar.Header{
+		Name: "skills/sneaky.bin",
+		Mode: 0644,
+		Size: int64(len(oversized)),
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(oversized); err != nil {
+		t.Fatal(err)
+	}
+	tw.Close()
+
+	dir := t.TempDir()
+	err := extractTar(&buf, dir)
+	if err == nil {
+		t.Fatal("expected error for oversized actual data, got nil")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("exceeds")) {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
