@@ -227,7 +227,9 @@ func TestExtractTar(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	tw.Close()
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	dir := t.TempDir()
 	if err := extractTar(&buf, dir); err != nil {
@@ -294,7 +296,9 @@ func TestExtractTarPathTraversal(t *testing.T) {
 			if _, err := tw.Write([]byte("pwned")); err != nil {
 				t.Fatal(err)
 			}
-			tw.Close()
+			if err := tw.Close(); err != nil {
+				t.Fatal(err)
+			}
 
 			dir := t.TempDir()
 			err := extractTar(&buf, dir)
@@ -332,7 +336,9 @@ func TestExtractTarSymlink(t *testing.T) {
 	if err := tw.WriteHeader(hdr); err != nil {
 		t.Fatal(err)
 	}
-	tw.Close()
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	dir := t.TempDir()
 	if err := extractTar(&buf, dir); err != nil {
@@ -368,7 +374,9 @@ func TestExtractTarSymlinkTraversal(t *testing.T) {
 			if err := tw.WriteHeader(hdr); err != nil {
 				t.Fatal(err)
 			}
-			tw.Close()
+			if err := tw.Close(); err != nil {
+				t.Fatal(err)
+			}
 
 			dir := t.TempDir()
 			err := extractTar(&buf, dir)
@@ -390,7 +398,9 @@ func TestExtractTarSymlinkRelativeTraversal(t *testing.T) {
 	if err := tw.WriteHeader(hdr); err != nil {
 		t.Fatal(err)
 	}
-	tw.Close()
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	dir := t.TempDir()
 	err := extractTar(&buf, dir)
@@ -413,7 +423,7 @@ func TestExtractTarOversizedFile(t *testing.T) {
 	if err := tw.WriteHeader(hdr); err != nil {
 		t.Fatal(err)
 	}
-	tw.Close()
+	_ = tw.Close() // intentionally incomplete tar entry
 
 	dir := t.TempDir()
 	err := extractTar(&buf, dir)
@@ -440,7 +450,9 @@ func TestExtractTarOversizedActualData(t *testing.T) {
 	if _, err := tw.Write(oversized); err != nil {
 		t.Fatal(err)
 	}
-	tw.Close()
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	dir := t.TempDir()
 	err := extractTar(&buf, dir)
