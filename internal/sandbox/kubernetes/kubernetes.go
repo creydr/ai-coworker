@@ -44,6 +44,10 @@ func NewWithClient(cs kubernetes.Interface, namespace, serviceAccount string) *R
 	return &Runtime{clientset: cs, namespace: namespace, serviceAccount: serviceAccount}
 }
 
+func (r *Runtime) Close() error {
+	return nil
+}
+
 func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.ExecResult, error) {
 	name := "sandbox-" + uuid.New().String()[:8]
 

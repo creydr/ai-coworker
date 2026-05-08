@@ -24,6 +24,10 @@ func (m *mockRuntime) Exec(_ context.Context, req sandbox.ExecRequest) (*sandbox
 	return m.result, m.err
 }
 
+func (m *mockRuntime) Close() error {
+	return nil
+}
+
 type mockVCSProvider struct {
 	name     string
 	token    string
