@@ -43,15 +43,7 @@ func (r *Runtime) Close() error {
 }
 
 func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.ExecResult, error) {
-	if req.EnvVars == nil {
-		req.EnvVars = make(map[string]string)
-	}
-	if req.CloneURL != "" {
-		req.EnvVars["CLONE_URL"] = req.CloneURL
-		if req.Branch != "" {
-			req.EnvVars["CLONE_BRANCH"] = req.Branch
-		}
-	}
+	sandbox.PrepareEnvVars(&req)
 
 	env := buildEnv(req.EnvVars)
 

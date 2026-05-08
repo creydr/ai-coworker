@@ -24,3 +24,15 @@ type Runtime interface {
 	Exec(ctx context.Context, req ExecRequest) (*ExecResult, error)
 	Close() error
 }
+
+func PrepareEnvVars(req *ExecRequest) {
+	if req.EnvVars == nil {
+		req.EnvVars = make(map[string]string)
+	}
+	if req.CloneURL != "" {
+		req.EnvVars["CLONE_URL"] = req.CloneURL
+		if req.Branch != "" {
+			req.EnvVars["CLONE_BRANCH"] = req.Branch
+		}
+	}
+}
