@@ -490,6 +490,82 @@ func TestBuildPrompt(t *testing.T) {
 			},
 		},
 		{
+			name: "review comment with file and line range",
+			execCtx: &executor.Context{
+				Task: &domain.Task{Input: "fix error handling"},
+				Event: &domain.IncomingEvent{
+					Metadata: map[string]string{
+						"repo":       "org/repo",
+						"issue_num":  "5",
+						"is_pr":      "true",
+						"path":       "internal/server/server.go",
+						"line":       "42",
+						"start_line": "38",
+					},
+				},
+			},
+			want: []string{
+				"File: internal/server/server.go (lines 38-42)",
+				"Pull Request: #5",
+			},
+		},
+		{
+			name: "review comment with file and single line",
+			execCtx: &executor.Context{
+				Task: &domain.Task{Input: "add validation"},
+				Event: &domain.IncomingEvent{
+					Metadata: map[string]string{
+						"repo":      "org/repo",
+						"issue_num": "5",
+						"is_pr":     "true",
+						"path":      "utils.go",
+						"line":      "15",
+					},
+				},
+			},
+			want: []string{
+				"File: utils.go (line 15)",
+			},
+			wantNot: []string{
+				"lines",
+			},
+		},
+		{
+			name: "review comment with file but no line",
+			execCtx: &executor.Context{
+				Task: &domain.Task{Input: "clean this up"},
+				Event: &domain.IncomingEvent{
+					Metadata: map[string]string{
+						"repo":      "org/repo",
+						"issue_num": "5",
+						"is_pr":     "true",
+						"path":      "main.go",
+					},
+				},
+			},
+			want: []string{
+				"File: main.go",
+			},
+			wantNot: []string{
+				"line",
+			},
+		},
+		{
+			name: "issue comment without file context",
+			execCtx: &executor.Context{
+				Task: &domain.Task{Input: "fix the bug"},
+				Event: &domain.IncomingEvent{
+					Metadata: map[string]string{
+						"repo":      "org/repo",
+						"issue_num": "10",
+					},
+				},
+			},
+			wantNot: []string{
+				"File:",
+			},
+		},
+		{
 			name: "gh CLI hint is present",
 			execCtx: &executor.Context{
 				Task: &domain.Task{Input: "test"},

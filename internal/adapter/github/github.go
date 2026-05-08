@@ -288,8 +288,37 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 		return nil
 	}
 
+	// Reply comments fetched via ListReviewComments have null line info.
+	// Resolve from the parent comment so the executor prompt includes it.
+	a.resolveReplyLineInfo(ctx, client, owner, repo, comments)
+
 	events := a.buildReviewEvents(e, comments, mention, userLogin, repoFullName, prNum, installationID, reviewID)
 	return handler(ctx, events)
+}
+
+// resolveReplyLineInfo fills in line/start_line on reply comments by fetching
+// the parent comment. ListReviewComments returns null for these fields on
+// replies, even though the parent has them.
+func (a *Adapter) resolveReplyLineInfo(ctx context.Context, client *gh.Client, owner, repo string, comments []*gh.PullRequestComment) {
+	parentCache := make(map[int64]*gh.PullRequestComment)
+	for _, c := range comments {
+		parentID := c.GetInReplyTo()
+		if parentID == 0 || c.GetLine() != 0 {
+			continue
+		}
+		parent, ok := parentCache[parentID]
+		if !ok {
+			var err error
+			parent, _, err = client.PullRequests.GetComment(ctx, owner, repo, parentID)
+			if err != nil {
+				slog.Warn("failed to fetch parent comment for line info", "parent_id", parentID, "error", err)
+				continue
+			}
+			parentCache[parentID] = parent
+		}
+		c.Line = parent.Line
+		c.StartLine = parent.StartLine
+	}
 }
 
 // isReviewRelevant returns true if the bot is mentioned in the review body or

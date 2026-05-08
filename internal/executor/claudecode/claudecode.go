@@ -199,6 +199,16 @@ func buildPrompt(execCtx *executor.Context) string {
 			}
 		}
 		sb.WriteString("\n")
+
+		if path := execCtx.Event.Metadata["path"]; path != "" {
+			fmt.Fprintf(&sb, "File: %s", path)
+			if start, end := execCtx.Event.Metadata["start_line"], execCtx.Event.Metadata["line"]; start != "" && end != "" {
+				fmt.Fprintf(&sb, " (lines %s-%s)", start, end)
+			} else if end := execCtx.Event.Metadata["line"]; end != "" {
+				fmt.Fprintf(&sb, " (line %s)", end)
+			}
+			sb.WriteString("\n\n")
+		}
 	}
 
 	if len(execCtx.Messages) > 0 {
