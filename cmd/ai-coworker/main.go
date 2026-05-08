@@ -115,6 +115,7 @@ func main() {
 		}
 		slog.Info("sandbox runtime: docker")
 	}
+	defer sandboxRuntime.Close()
 
 	// 9. Create Claude Code executor with sandbox runtime.
 	vcsRegistry := vcs.NewRegistry()

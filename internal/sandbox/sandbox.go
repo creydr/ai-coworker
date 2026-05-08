@@ -22,4 +22,5 @@ type ExecResult struct {
 
 type Runtime interface {
 	Exec(ctx context.Context, req ExecRequest) (*ExecResult, error)
+	Close() error
 }

@@ -35,6 +35,13 @@ func New() (*Runtime, error) {
 	return &Runtime{client: cli}, nil
 }
 
+func (r *Runtime) Close() error {
+	if r.client != nil {
+		return r.client.Close()
+	}
+	return nil
+}
+
 func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.ExecResult, error) {
 	if req.EnvVars == nil {
 		req.EnvVars = make(map[string]string)
