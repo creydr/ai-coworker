@@ -73,6 +73,7 @@ sandbox/                Dockerfile + entrypoint for sandbox image
 - Run `make test` before considering any change complete
 - Run `make lint` before commits
 - Read `CONTRIBUTING.md` for development setup and workflow
+- Create a PR for every change — never push directly to main
 
 ### Ask First
 
