@@ -84,7 +84,7 @@ func TestFilterComments_BotLastReply(t *testing.T) {
 		Content: "Hey @bot@example.com fix this",
 		Author:  &drive.User{EmailAddress: "user@example.com"},
 		Replies: []*drive.Reply{
-			{Content: "Looking into this...", Author: &drive.User{EmailAddress: "bot@example.com"}},
+			{Content: "Looking into this...", Author: &drive.User{Me: true}},
 		},
 	}
 
@@ -100,7 +100,7 @@ func TestFilterComments_UserRepliedAfterBot(t *testing.T) {
 		Content: "Hey @bot@example.com fix this",
 		Author:  &drive.User{EmailAddress: "user@example.com"},
 		Replies: []*drive.Reply{
-			{Content: "Looking into this...", Author: &drive.User{EmailAddress: "bot@example.com"}},
+			{Content: "Looking into this...", Author: &drive.User{Me: true}},
 			{Content: "Actually, can you also fix the tests?", Author: &drive.User{EmailAddress: "user@example.com"}},
 		},
 	}
