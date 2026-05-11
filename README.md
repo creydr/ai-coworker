@@ -1,6 +1,6 @@
 # AI Coworker
 
-An autonomous AI agent that executes software development tasks end-to-end through pluggable channel adapters. Ships with GitHub and Slack support — mention it on a GitHub issue and it will discuss the problem, write code, and open a pull request; tag it in Slack and it will answer questions or kick off tasks. New channels can be added by implementing the `adapter.Adapter` interface.
+An autonomous AI agent that executes software development tasks end-to-end through pluggable channel adapters. Ships with GitHub, Slack, and Google Docs support — mention it on a GitHub issue and it will discuss the problem, write code, and open a pull request; tag it in Slack and it will answer questions or kick off tasks; assign it an action item in a Google Doc and it will respond right in the comment thread. New channels can be added by implementing the `adapter.Adapter` interface.
 
 https://github.com/user-attachments/assets/e59fb872-1747-41f7-94ff-21a8a600e898
 
@@ -119,6 +119,33 @@ https://github.com/creydr/ai-coworker/raw/main/docs/video/demo-slack-github-inte
 
 All settings can also be provided purely via environment variables — see [docs/deployment.md](docs/deployment.md#environment-variables) for the full reference.
 
+## Google Docs Setup
+
+The bot can monitor Google Docs for comments and action items assigned to it, responding directly in the document's comment threads.
+
+1. Create a [Google Cloud service account](https://console.cloud.google.com/iam-admin/serviceaccounts) with the **Google Drive API** enabled.
+2. Generate a JSON key for the service account and store it securely.
+3. Share the Google Docs you want monitored with the service account's email address (found in the JSON key as `client_email`).
+4. Add the Google Docs settings to your `config.yaml`:
+   ```yaml
+   googledocs:
+     enabled: true
+     serviceAccountKeyPath: "/path/to/service-account-key.json"
+     listenAddr: ":8082"
+     documentContentMaxSize: "100KB"
+   ```
+
+   - `listenAddr`: address for the Drive push notification webhook (default `:8082`)
+   - `documentContentMaxSize`: max document context size sent to the LLM (`100KB`, `1MB`, or `0` to disable the limit)
+
+The adapter uses Google Drive push notifications to detect changes, then polls comments only on modified documents. To receive push notifications locally, use a tool like [smee.io](https://smee.io) or [ngrok](https://ngrok.com) to expose the webhook endpoint.
+
+**Interacting with the bot:**
+- **Mention:** Include the service account email in a comment (e.g. `@bot-sa@project.iam.gserviceaccount.com please review this section`)
+- **Action item:** Assign an action item to the service account email in a comment
+
+All settings can also be provided purely via environment variables — see [docs/deployment.md](docs/deployment.md#environment-variables) for the full reference.
+
 ## Usage
 
 ### GitHub
@@ -144,6 +171,19 @@ Mention the bot in any channel it's been added to:
 ```
 
 Responses are threaded automatically.
+
+### Google Docs
+
+Assign an action item or mention the bot's service account email in a comment on any shared Google Doc:
+
+```
+@bot-sa@project.iam.gserviceaccount.com Can you summarize the key decisions in this document?
+```
+
+The bot will:
+1. Reply with "Looking into this..." to acknowledge
+2. Read the full document content and comment history for context
+3. Respond directly in the comment thread
 
 ## Skill Images
 

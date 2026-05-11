@@ -48,6 +48,9 @@ slack:
 github:
   enabled: false
 
+googledocs:
+  enabled: false
+
 sandbox:
   runtime: "docker"
   image: "ghcr.io/creydr/ai-coworker-sandbox:latest"
@@ -86,6 +89,10 @@ Secrets and deployment-specific values must be set via environment variables:
 | `AI_COWORKER__SLACK__ENABLED` | Set to `true` to enable the Slack adapter |
 | `AI_COWORKER__SLACK__APP_TOKEN` | Slack app-level token (`xapp-...`) |
 | `AI_COWORKER__SLACK__BOT_TOKEN` | Slack bot token (`xoxb-...`) |
+| `AI_COWORKER__GOOGLEDOCS__ENABLED` | Set to `true` to enable the Google Docs adapter |
+| `AI_COWORKER__GOOGLEDOCS__SERVICE_ACCOUNT_KEY_PATH` | Path to Google service account JSON key file |
+| `AI_COWORKER__GOOGLEDOCS__LISTEN_ADDR` | Address for the Drive push notification webhook (default `:8082`) |
+| `AI_COWORKER__GOOGLEDOCS__DOCUMENT_CONTENT_MAX_SIZE` | Max document context size (`100KB`, `1MB`, or `0` for unlimited) |
 | `AI_COWORKER__LLM__VERTEX__PROJECT_ID` | Google Cloud project ID (Vertex AI provider) |
 | `AI_COWORKER__LLM__VERTEX__REGION` | Vertex AI region (defaults to `global`) |
 | `AI_COWORKER__LLM__OPENAI__BASE_URL` | Base URL for OpenAI-compatible API |
