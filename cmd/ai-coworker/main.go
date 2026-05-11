@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/creydr/ai-coworker/internal/adapter/github"
+	"github.com/creydr/ai-coworker/internal/adapter/googledocs"
 	"github.com/creydr/ai-coworker/internal/adapter/slack"
 	"github.com/creydr/ai-coworker/internal/config"
 	"github.com/creydr/ai-coworker/internal/engine"
@@ -97,7 +98,28 @@ func main() {
 		slog.Info("github adapter enabled", "app_id", cfg.GitHub.AppID, "private_key_len", len(cfg.GitHub.PrivateKey))
 	}
 
-	// 8. Create sandbox runtime.
+	// 8. If Google Docs is enabled: create adapter, register, start in goroutine.
+	if cfg.GoogleDocs.Enabled {
+		gdocsAdapter, err := googledocs.New(googledocs.Config{
+			ServiceAccountKeyPath:  cfg.GoogleDocs.ServiceAccountKeyPath,
+			ListenAddr:             cfg.GoogleDocs.ListenAddr,
+			DocumentContentMaxSize: cfg.GoogleDocs.DocumentContentMaxSize,
+			Store:                  db,
+		})
+		if err != nil {
+			slog.Error("failed to create googledocs adapter", "error", err)
+			os.Exit(1)
+		}
+		router.RegisterAdapter(gdocsAdapter)
+		go func() {
+			if err := gdocsAdapter.Start(ctx, router.HandleEvent); err != nil {
+				slog.Error("googledocs adapter stopped", "error", err)
+			}
+		}()
+		slog.Info("googledocs adapter enabled")
+	}
+
+	// 9. Create sandbox runtime.
 	var sandboxRuntime sandbox.Runtime
 	switch cfg.Sandbox.Runtime {
 	case config.RuntimeKubernetes:
