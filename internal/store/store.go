@@ -43,6 +43,13 @@ type Store interface {
 	// UpdateTask saves changes to an existing task.
 	UpdateTask(ctx context.Context, t *domain.Task) error
 
+	// GetAdapterState retrieves a state value for the given adapter and key.
+	// Returns ErrNotFound if no entry exists.
+	GetAdapterState(ctx context.Context, adapter, key string) (string, error)
+
+	// SetAdapterState upserts a state value for the given adapter and key.
+	SetAdapterState(ctx context.Context, adapter, key, value string) error
+
 	// Migrate runs all database migrations.
 	Migrate(ctx context.Context) error
 

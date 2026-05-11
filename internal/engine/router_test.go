@@ -110,6 +110,14 @@ func (m *mockStore) UpdateTask(ctx context.Context, t *domain.Task) error {
 func (m *mockStore) Migrate(ctx context.Context) error { return nil }
 func (m *mockStore) Close() error                      { return nil }
 
+func (m *mockStore) GetAdapterState(ctx context.Context, adapter, key string) (string, error) {
+	return "", store.ErrNotFound
+}
+
+func (m *mockStore) SetAdapterState(ctx context.Context, adapter, key, value string) error {
+	return nil
+}
+
 type mockAdapter struct {
 	name             string
 	acknowledgeCalls []domain.ChannelRef

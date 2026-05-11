@@ -386,6 +386,34 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, t *domain.Task) error {
 	return nil
 }
 
+// ---------- adapter state ----------
+
+func (s *PostgresStore) GetAdapterState(ctx context.Context, adapter, key string) (string, error) {
+	var value string
+	err := s.pool.QueryRow(ctx,
+		`SELECT value FROM adapter_state WHERE adapter = $1 AND key = $2`,
+		adapter, key).Scan(&value)
+	if err == pgx.ErrNoRows {
+		return "", fmt.Errorf("adapter state %s/%s: %w", adapter, key, ErrNotFound)
+	}
+	if err != nil {
+		return "", fmt.Errorf("getting adapter state: %w", err)
+	}
+	return value, nil
+}
+
+func (s *PostgresStore) SetAdapterState(ctx context.Context, adapter, key, value string) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO adapter_state (adapter, key, value)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (adapter, key) DO UPDATE SET value = EXCLUDED.value`,
+		adapter, key, value)
+	if err != nil {
+		return fmt.Errorf("setting adapter state: %w", err)
+	}
+	return nil
+}
+
 func encodeMetadata(m map[string]string) ([]byte, error) {
 	if m == nil {
 		return []byte("{}"), nil
