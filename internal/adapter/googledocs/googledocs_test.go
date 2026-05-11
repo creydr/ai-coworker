@@ -77,6 +77,40 @@ func TestFilterComments_Resolved(t *testing.T) {
 	}
 }
 
+func TestFilterComments_ReplyWithoutMention(t *testing.T) {
+	a := &Adapter{botEmail: "bot@example.com"}
+
+	comment := &drive.Comment{
+		Content: "Hey @bot@example.com fix this",
+		Author:  &drive.User{EmailAddress: "user@example.com"},
+		Replies: []*drive.Reply{
+			{Content: "Done!", Author: &drive.User{Me: true}},
+			{Content: "can you recheck", Author: &drive.User{EmailAddress: "user@example.com"}},
+		},
+	}
+
+	if a.isRelevantComment(comment) {
+		t.Error("expected reply without bot mention to not be relevant")
+	}
+}
+
+func TestFilterComments_ReplyWithMention(t *testing.T) {
+	a := &Adapter{botEmail: "bot@example.com"}
+
+	comment := &drive.Comment{
+		Content: "Hey @bot@example.com fix this",
+		Author:  &drive.User{EmailAddress: "user@example.com"},
+		Replies: []*drive.Reply{
+			{Content: "Done!", Author: &drive.User{Me: true}},
+			{Content: "@bot@example.com can you recheck", Author: &drive.User{EmailAddress: "user@example.com"}},
+		},
+	}
+
+	if !a.isRelevantComment(comment) {
+		t.Error("expected reply mentioning bot to be relevant")
+	}
+}
+
 func TestFilterComments_BotLastReply(t *testing.T) {
 	a := &Adapter{botEmail: "bot@example.com"}
 
@@ -90,23 +124,6 @@ func TestFilterComments_BotLastReply(t *testing.T) {
 
 	if a.isRelevantComment(comment) {
 		t.Error("expected comment where bot posted the last reply to not be relevant")
-	}
-}
-
-func TestFilterComments_UserRepliedAfterBot(t *testing.T) {
-	a := &Adapter{botEmail: "bot@example.com"}
-
-	comment := &drive.Comment{
-		Content: "Hey @bot@example.com fix this",
-		Author:  &drive.User{EmailAddress: "user@example.com"},
-		Replies: []*drive.Reply{
-			{Content: "Looking into this...", Author: &drive.User{Me: true}},
-			{Content: "Actually, can you also fix the tests?", Author: &drive.User{EmailAddress: "user@example.com"}},
-		},
-	}
-
-	if !a.isRelevantComment(comment) {
-		t.Error("expected comment where user replied after bot to be relevant")
 	}
 }
 

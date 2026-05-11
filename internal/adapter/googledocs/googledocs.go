@@ -327,14 +327,9 @@ func (a *Adapter) isRelevantComment(comment *drive.Comment) bool {
 		return false
 	}
 
-	if strings.Contains(comment.Content, a.botEmail) {
+	content := extractContent(comment)
+	if strings.Contains(content, a.botEmail) {
 		return true
-	}
-
-	for _, reply := range comment.Replies {
-		if strings.Contains(reply.Content, a.botEmail) {
-			return true
-		}
 	}
 
 	return isActionItemAssignedTo(comment, a.botEmail)
