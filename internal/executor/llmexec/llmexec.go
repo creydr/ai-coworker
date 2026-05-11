@@ -24,9 +24,17 @@ func New(provider llm.Provider) *Executor {
 func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*executor.Result, error) {
 	var messages []llm.Message
 
+	systemPrompt := "You are a helpful AI coworker. Assist with questions, discussions, and reviews related to software development. Be concise and helpful."
+
+	if execCtx.Event != nil && execCtx.Event.Metadata != nil {
+		if docCtx := execCtx.Event.Metadata["document_context"]; docCtx != "" {
+			systemPrompt += "\n\nDocument content:\n" + docCtx
+		}
+	}
+
 	messages = append(messages, llm.Message{
 		Role:    domain.RoleSystem,
-		Content: "You are a helpful AI coworker. Assist with questions, discussions, and reviews related to software development. Be concise and helpful.",
+		Content: systemPrompt,
 	})
 
 	for _, msg := range execCtx.Messages {

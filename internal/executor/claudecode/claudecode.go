@@ -213,6 +213,12 @@ func buildPrompt(execCtx *executor.Context) string {
 			}
 			sb.WriteString("\n\n")
 		}
+
+		if docCtx := execCtx.Event.Metadata["document_context"]; docCtx != "" {
+			sb.WriteString("Document content:\n")
+			sb.WriteString(docCtx)
+			sb.WriteString("\n\n")
+		}
 	}
 
 	if len(execCtx.Messages) > 0 {
