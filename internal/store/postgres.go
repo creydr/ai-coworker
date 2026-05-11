@@ -29,12 +29,16 @@ var migration002SQL string
 //go:embed migrations/003_channel_ref_refactor.sql
 var migration003SQL string
 
+//go:embed migrations/004_adapter_state.sql
+var migration004SQL string
+
 // migrations is the ordered list of all schema migrations. New migrations
 // must be appended with the next sequential version number.
 var migrations = []migration{
 	{version: 1, sql: migration001SQL},
 	{version: 2, sql: migration002SQL},
 	{version: 3, sql: migration003SQL},
+	{version: 4, sql: migration004SQL},
 }
 
 // scannable is satisfied by both pgx.Row and pgx.Rows.
