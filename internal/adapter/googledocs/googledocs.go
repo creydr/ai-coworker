@@ -249,15 +249,6 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 			continue
 		}
 
-		var lastReplyIsMe bool
-		if len(comment.Replies) > 0 {
-			last := comment.Replies[len(comment.Replies)-1]
-			if last.Author != nil {
-				lastReplyIsMe = last.Author.Me
-			}
-		}
-		slog.Info("checking comment", "file_id", fileID, "comment_id", comment.Id, "num_replies", len(comment.Replies), "last_reply_is_me", lastReplyIsMe, "relevant", a.isRelevantComment(comment))
-
 		if !a.isRelevantComment(comment) {
 			continue
 		}
