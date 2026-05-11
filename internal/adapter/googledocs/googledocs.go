@@ -251,11 +251,16 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 			slog.Warn("failed to fetch document context", "file_id", fileID, "error", err)
 		}
 
+		var userID string
+		if comment.Author != nil {
+			userID = comment.Author.EmailAddress
+		}
+
 		ref := NewRef(fileID, comment.Id)
 		event := domain.IncomingEvent{
 			ChannelRef: ref,
 			ThreadID:   fmt.Sprintf("googledocs-%s-%s", fileID, comment.Id),
-			UserID:     comment.Author.EmailAddress,
+			UserID:     userID,
 			Content:    content,
 			Metadata: map[string]string{
 				"document_id":      fileID,
