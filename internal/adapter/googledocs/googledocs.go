@@ -211,6 +211,7 @@ func (a *Adapter) processChanges(ctx context.Context) error {
 			slog.Error("error checking document comments", "file_id", change.FileId, "error", err)
 		}
 		docMu.Unlock()
+		a.docLocks.Delete(change.FileId)
 	}
 
 	return nil
