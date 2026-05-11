@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,6 +43,7 @@ type Adapter struct {
 	server         *http.Server
 	contentMaxSize int64
 	channelToken   string
+	mu             sync.Mutex
 	pageToken      string
 	channelID      string
 	resourceID     string
@@ -177,6 +179,9 @@ func (a *Adapter) handleNotification(ctx context.Context, w http.ResponseWriter,
 }
 
 func (a *Adapter) processChanges(ctx context.Context) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if a.pageToken == "" {
 		return nil
 	}
