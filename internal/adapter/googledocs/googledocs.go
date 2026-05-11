@@ -291,6 +291,17 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 }
 
 func (a *Adapter) isRelevantComment(comment *drive.Comment) bool {
+	if len(comment.Replies) > 0 {
+		lastReply := comment.Replies[len(comment.Replies)-1]
+		if lastReply.Author != nil && lastReply.Author.EmailAddress == a.botEmail {
+			return false
+		}
+	}
+
+	if comment.Author != nil && comment.Author.EmailAddress == a.botEmail {
+		return false
+	}
+
 	if strings.Contains(comment.Content, a.botEmail) {
 		return true
 	}
@@ -299,10 +310,6 @@ func (a *Adapter) isRelevantComment(comment *drive.Comment) bool {
 		if strings.Contains(reply.Content, a.botEmail) {
 			return true
 		}
-	}
-
-	if comment.Author != nil && comment.Author.EmailAddress == a.botEmail {
-		return false
 	}
 
 	return isActionItemAssignedTo(comment, a.botEmail)
