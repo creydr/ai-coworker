@@ -44,6 +44,7 @@ type Adapter struct {
 	contentMaxSize int64
 	channelToken   string
 	mu             sync.Mutex
+	docLocks       sync.Map
 	pageToken      string
 	channelID      string
 	resourceID     string
@@ -180,9 +181,8 @@ func (a *Adapter) handleNotification(ctx context.Context, w http.ResponseWriter,
 
 func (a *Adapter) processChanges(ctx context.Context) error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	if a.pageToken == "" {
+		a.mu.Unlock()
 		return nil
 	}
 
@@ -190,16 +190,8 @@ func (a *Adapter) processChanges(ctx context.Context) error {
 		Fields("nextPageToken", "newStartPageToken", "changes(fileId, file(mimeType))").
 		Context(ctx).Do()
 	if err != nil {
+		a.mu.Unlock()
 		return fmt.Errorf("listing drive changes: %w", err)
-	}
-
-	for _, change := range changeList.Changes {
-		if change.File == nil || change.File.MimeType != "application/vnd.google-apps.document" {
-			continue
-		}
-		if err := a.checkDocumentComments(ctx, change.FileId); err != nil {
-			slog.Error("error checking document comments", "file_id", change.FileId, "error", err)
-		}
 	}
 
 	if changeList.NewStartPageToken != "" {
@@ -207,8 +199,26 @@ func (a *Adapter) processChanges(ctx context.Context) error {
 	} else if changeList.NextPageToken != "" {
 		a.pageToken = changeList.NextPageToken
 	}
+	a.mu.Unlock()
+
+	for _, change := range changeList.Changes {
+		if change.File == nil || change.File.MimeType != "application/vnd.google-apps.document" {
+			continue
+		}
+		docMu := a.docLock(change.FileId)
+		docMu.Lock()
+		if err := a.checkDocumentComments(ctx, change.FileId); err != nil {
+			slog.Error("error checking document comments", "file_id", change.FileId, "error", err)
+		}
+		docMu.Unlock()
+	}
 
 	return nil
+}
+
+func (a *Adapter) docLock(fileID string) *sync.Mutex {
+	v, _ := a.docLocks.LoadOrStore(fileID, &sync.Mutex{})
+	return v.(*sync.Mutex)
 }
 
 func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) error {
