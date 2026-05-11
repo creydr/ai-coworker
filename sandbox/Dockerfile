@@ -1,4 +1,4 @@
-FROM node:22-bookworm
+FROM node:26-bookworm
 
 RUN apt-get update && apt-get install -y git gh && rm -rf /var/lib/apt/lists/*
 
