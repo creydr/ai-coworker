@@ -27,6 +27,7 @@ var _ adapter.Adapter = (*Adapter)(nil)
 type Config struct {
 	ServiceAccountKeyPath  string
 	ListenAddr             string
+	WebhookURL             string
 	DocumentContentMaxSize string
 	Store                  store.Store
 }
@@ -37,6 +38,7 @@ type Adapter struct {
 	store          store.Store
 	handler        adapter.EventHandler
 	listenAddr     string
+	webhookURL     string
 	server         *http.Server
 	contentMaxSize int64
 	channelToken   string
@@ -67,6 +69,7 @@ func New(cfg Config) (*Adapter, error) {
 		botEmail:       email,
 		store:          cfg.Store,
 		listenAddr:     cfg.ListenAddr,
+		webhookURL:     cfg.WebhookURL,
 		contentMaxSize: maxSize,
 		channelToken:   uuid.New().String(),
 	}, nil
@@ -109,13 +112,17 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 }
 
 func (a *Adapter) registerWatch(ctx context.Context) error {
+	if a.webhookURL == "" {
+		return fmt.Errorf("webhookUrl is required for Drive push notifications")
+	}
+
 	startToken, err := a.driveService.Changes.GetStartPageToken().Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("getting start page token: %w", err)
 	}
 	a.pageToken = startToken.StartPageToken
 
-	webhookURL := fmt.Sprintf("https://localhost%s/webhooks/googledocs", a.listenAddr)
+	webhookURL := strings.TrimRight(a.webhookURL, "/") + "/webhooks/googledocs"
 	channelID := uuid.New().String()
 
 	channel, err := a.driveService.Changes.Watch(a.pageToken, &drive.Channel{

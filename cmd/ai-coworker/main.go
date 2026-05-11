@@ -103,6 +103,7 @@ func main() {
 		gdocsAdapter, err := googledocs.New(googledocs.Config{
 			ServiceAccountKeyPath:  cfg.GoogleDocs.ServiceAccountKeyPath,
 			ListenAddr:             cfg.GoogleDocs.ListenAddr,
+			WebhookURL:             cfg.GoogleDocs.WebhookURL,
 			DocumentContentMaxSize: cfg.GoogleDocs.DocumentContentMaxSize,
 			Store:                  db,
 		})

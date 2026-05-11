@@ -79,6 +79,7 @@ type GoogleDocsConfig struct {
 	Enabled                bool   `koanf:"enabled"`
 	ServiceAccountKeyPath  string `koanf:"serviceAccountKeyPath"`
 	ListenAddr             string `koanf:"listenAddr"`
+	WebhookURL             string `koanf:"webhookUrl"`
 	DocumentContentMaxSize string `koanf:"documentContentMaxSize"`
 }
 

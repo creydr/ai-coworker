@@ -18,6 +18,7 @@ googledocs:
   enabled: false
   # serviceAccountKeyPath: "/path/to/service-account-key.json"
   # listenAddr: ":8082"
+  # webhookUrl: "https://your-public-url.example.com"  # public URL for Drive push notifications
   # documentContentMaxSize: "100KB"  # "0" to disable cap
 
 sandbox:

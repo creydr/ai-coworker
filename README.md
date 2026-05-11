@@ -132,10 +132,12 @@ The bot can monitor Google Docs for comments and action items assigned to it, re
      enabled: true
      serviceAccountKeyPath: "/path/to/service-account-key.json"
      listenAddr: ":8082"
+     webhookUrl: "https://your-public-url.example.com"
      documentContentMaxSize: "100KB"
    ```
 
-   - `listenAddr`: address for the Drive push notification webhook (default `:8082`)
+   - `listenAddr`: address for the local webhook server (default `:8082`)
+   - `webhookUrl`: public HTTPS URL that Google can reach — the adapter appends `/webhooks/googledocs` to this. Use [ngrok](https://ngrok.com) or [smee.io](https://smee.io) for local development.
    - `documentContentMaxSize`: max document context size sent to the LLM (`100KB`, `1MB`, or `0` to disable the limit)
 
 The adapter uses Google Drive push notifications to detect changes, then polls comments only on modified documents. To receive push notifications locally, use a tool like [smee.io](https://smee.io) or [ngrok](https://ngrok.com) to expose the webhook endpoint.
