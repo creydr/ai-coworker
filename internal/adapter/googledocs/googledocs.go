@@ -122,13 +122,12 @@ func (a *Adapter) registerWatch(ctx context.Context) error {
 	}
 	a.pageToken = startToken.StartPageToken
 
-	webhookURL := strings.TrimRight(a.webhookURL, "/") + "/webhooks/googledocs"
 	channelID := uuid.New().String()
 
 	channel, err := a.driveService.Changes.Watch(a.pageToken, &drive.Channel{
 		Id:      channelID,
 		Type:    "web_hook",
-		Address: webhookURL,
+		Address: a.webhookURL,
 		Token:   a.channelToken,
 	}).Context(ctx).Do()
 	if err != nil {
