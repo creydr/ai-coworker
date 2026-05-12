@@ -84,8 +84,10 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 	defer cleanupSkillDirs(skillDirs)
 
 	hostCfg := &container.HostConfig{
-		Resources: resources,
-		Binds:     binds,
+		Resources:   resources,
+		Binds:       binds,
+		CapDrop:     []string{"ALL"},
+		SecurityOpt: []string{"no-new-privileges"},
 	}
 
 	if req.Timeout > 0 {

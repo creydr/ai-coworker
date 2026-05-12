@@ -237,6 +237,13 @@ func buildJob(name, namespace, serviceAccount string, req sandbox.ExecRequest, r
 						Env:          buildEnvVars(req.EnvVars),
 						Resources:    resources,
 						VolumeMounts: volumeMounts,
+						SecurityContext: &corev1.SecurityContext{
+							RunAsNonRoot:             boolPtr(true),
+							AllowPrivilegeEscalation: boolPtr(false),
+							Capabilities: &corev1.Capabilities{
+								Drop: []corev1.Capability{"ALL"},
+							},
+						},
 					}},
 					Volumes: volumes,
 				},
@@ -244,6 +251,8 @@ func buildJob(name, namespace, serviceAccount string, req sandbox.ExecRequest, r
 		},
 	}
 }
+
+func boolPtr(b bool) *bool { return &b }
 
 func buildEnvVars(envVars map[string]string) []corev1.EnvVar {
 	vars := make([]corev1.EnvVar, 0, len(envVars))

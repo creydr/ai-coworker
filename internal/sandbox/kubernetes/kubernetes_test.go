@@ -171,6 +171,19 @@ func TestBuildJob(t *testing.T) {
 	if len(pod.Volumes) != 1 || pod.Volumes[0].ConfigMap.Name != "sandbox-abc123" {
 		t.Errorf("Volumes not configured correctly")
 	}
+
+	if c.SecurityContext == nil {
+		t.Fatal("SecurityContext is nil")
+	}
+	if c.SecurityContext.RunAsNonRoot == nil || !*c.SecurityContext.RunAsNonRoot {
+		t.Error("RunAsNonRoot should be true")
+	}
+	if c.SecurityContext.AllowPrivilegeEscalation == nil || *c.SecurityContext.AllowPrivilegeEscalation {
+		t.Error("AllowPrivilegeEscalation should be false")
+	}
+	if c.SecurityContext.Capabilities == nil || len(c.SecurityContext.Capabilities.Drop) != 1 || c.SecurityContext.Capabilities.Drop[0] != "ALL" {
+		t.Errorf("Capabilities.Drop = %v, want [ALL]", c.SecurityContext.Capabilities)
+	}
 }
 
 func TestBuildJobWithSkillImages(t *testing.T) {
