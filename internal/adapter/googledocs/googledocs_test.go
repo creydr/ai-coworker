@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"google.golang.org/api/drive/v3"
@@ -167,7 +168,7 @@ func TestTruncateContent(t *testing.T) {
 	if result[:10] != content[:10] {
 		t.Errorf("truncated content prefix = %q, want %q", result[:10], content[:10])
 	}
-	if !contains(result, "[Content truncated due to size limit]") {
+	if !strings.Contains(result, "[Content truncated due to size limit]") {
 		t.Error("expected truncation notice in output")
 	}
 }
@@ -350,13 +351,255 @@ func TestIsActionItemAssignedTo(t *testing.T) {
 	}
 }
 
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
+func TestBuildDocumentContext_InlineMarkers(t *testing.T) {
+	docText := "First paragraph.\nFix the bug here.\nLast paragraph."
+	comments := []*drive.Comment{
+		{
+			Id:                "c1",
+			Content:           "Please fix this",
+			QuotedFileContent: &drive.CommentQuotedFileContent{Value: "Fix the bug here."},
+			Author:            &drive.User{DisplayName: "Alice"},
+		},
 	}
-	return false
+
+	result := buildDocumentContext(docText, comments, "trigger", 0)
+
+	if !strings.Contains(result, "Fix the bug here. [Comment 1]") {
+		t.Errorf("expected inline marker after quoted text, got:\n%s", result)
+	}
+	if !strings.Contains(result, "=== DOCUMENT ===") {
+		t.Error("expected DOCUMENT section header")
+	}
+	if !strings.Contains(result, "=== OTHER COMMENTS ===") {
+		t.Error("expected OTHER COMMENTS section header")
+	}
+	if !strings.Contains(result, `[Comment 1] On: "Fix the bug here."`) {
+		t.Errorf("expected comment reference in OTHER COMMENTS, got:\n%s", result)
+	}
+	if !strings.Contains(result, "[Alice]: Please fix this") {
+		t.Error("expected comment content with author name")
+	}
+}
+
+func TestBuildDocumentContext_TriggeringExcluded(t *testing.T) {
+	docText := "Some document text."
+	comments := []*drive.Comment{
+		{
+			Id:                "trigger-id",
+			Content:           "I am the trigger",
+			QuotedFileContent: &drive.CommentQuotedFileContent{Value: "Some document"},
+			Author:            &drive.User{DisplayName: "User"},
+		},
+		{
+			Id:                "other-id",
+			Content:           "I am another comment",
+			QuotedFileContent: &drive.CommentQuotedFileContent{Value: "document text"},
+			Author:            &drive.User{DisplayName: "Other"},
+		},
+	}
+
+	result := buildDocumentContext(docText, comments, "trigger-id", 0)
+
+	if strings.Contains(result, "I am the trigger") {
+		t.Error("triggering comment should be excluded from OTHER COMMENTS")
+	}
+	if !strings.Contains(result, "Some document [Active Comment]") {
+		t.Errorf("expected [Active Comment] marker at triggering comment position, got:\n%s", result)
+	}
+	if !strings.Contains(result, "I am another comment") {
+		t.Error("non-triggering comment should be included")
+	}
+}
+
+func TestBuildDocumentContext_ResolvedSkipped(t *testing.T) {
+	docText := "Document text."
+	comments := []*drive.Comment{
+		{
+			Id:       "resolved-id",
+			Content:  "Old resolved comment",
+			Resolved: true,
+			Author:   &drive.User{DisplayName: "User"},
+		},
+	}
+
+	result := buildDocumentContext(docText, comments, "trigger", 0)
+
+	if strings.Contains(result, "Old resolved comment") {
+		t.Error("resolved comments should be excluded")
+	}
+	if strings.Contains(result, "OTHER COMMENTS") {
+		t.Error("should not have OTHER COMMENTS section when no comments qualify")
+	}
+}
+
+func TestBuildDocumentContext_NoQuotedText(t *testing.T) {
+	docText := "Document text."
+	comments := []*drive.Comment{
+		{
+			Id:      "general-id",
+			Content: "A general comment",
+			Author:  &drive.User{DisplayName: "User"},
+		},
+	}
+
+	result := buildDocumentContext(docText, comments, "trigger", 0)
+
+	if !strings.Contains(result, "(general comment)") {
+		t.Errorf("expected general comment label, got:\n%s", result)
+	}
+	if !strings.Contains(result, "A general comment") {
+		t.Error("expected comment content")
+	}
+}
+
+func TestBuildDocumentContext_Replies(t *testing.T) {
+	docText := "Document text."
+	comments := []*drive.Comment{
+		{
+			Id:      "c1",
+			Content: "Original comment",
+			Author:  &drive.User{DisplayName: "Alice"},
+			Replies: []*drive.Reply{
+				{Content: "I agree", Author: &drive.User{DisplayName: "Bob"}},
+				{Content: "Me too", Author: &drive.User{DisplayName: "Carol"}},
+			},
+		},
+	}
+
+	result := buildDocumentContext(docText, comments, "trigger", 0)
+
+	if !strings.Contains(result, "[Alice]: Original comment") {
+		t.Error("expected original comment author and content")
+	}
+	if !strings.Contains(result, "[Bob]: I agree") {
+		t.Error("expected first reply")
+	}
+	if !strings.Contains(result, "[Carol]: Me too") {
+		t.Error("expected second reply")
+	}
+}
+
+func TestBuildDocumentContext_Truncation(t *testing.T) {
+	docText := "A very long document that should be truncated."
+	comments := []*drive.Comment{
+		{
+			Id:      "c1",
+			Content: "Comment",
+			Author:  &drive.User{DisplayName: "User"},
+		},
+	}
+
+	result := buildDocumentContext(docText, comments, "trigger", 30)
+
+	if !strings.Contains(result, "[Content truncated due to size limit]") {
+		t.Errorf("expected truncation notice, got:\n%s", result)
+	}
+}
+
+func TestBuildDocumentContext_EmptyDoc(t *testing.T) {
+	result := buildDocumentContext("", nil, "trigger", 0)
+
+	if !strings.Contains(result, "=== DOCUMENT ===") {
+		t.Error("expected DOCUMENT section even for empty doc")
+	}
+	if strings.Contains(result, "OTHER COMMENTS") {
+		t.Error("should not have OTHER COMMENTS for empty comment list")
+	}
+}
+
+func TestBuildDocumentContext_MultipleCommentsOrderedByPosition(t *testing.T) {
+	docText := "First section.\nSecond section.\nThird section."
+	comments := []*drive.Comment{
+		{
+			Id:                "c-third",
+			Content:           "Comment on third",
+			QuotedFileContent: &drive.CommentQuotedFileContent{Value: "Third section."},
+			Author:            &drive.User{DisplayName: "User"},
+		},
+		{
+			Id:                "c-first",
+			Content:           "Comment on first",
+			QuotedFileContent: &drive.CommentQuotedFileContent{Value: "First section."},
+			Author:            &drive.User{DisplayName: "User"},
+		},
+	}
+
+	result := buildDocumentContext(docText, comments, "trigger", 0)
+
+	if !strings.Contains(result, "First section. [Comment 1]") {
+		t.Errorf("expected Comment 1 on first section, got:\n%s", result)
+	}
+	if !strings.Contains(result, "Third section. [Comment 2]") {
+		t.Errorf("expected Comment 2 on third section, got:\n%s", result)
+	}
+}
+
+func TestBuildDocumentContext_DuplicateQuotedText(t *testing.T) {
+	docText := "Fix bug.\nSome text.\nFix bug."
+	comments := []*drive.Comment{
+		{
+			Id:                "c1",
+			Content:           "First occurrence",
+			QuotedFileContent: &drive.CommentQuotedFileContent{Value: "Fix bug."},
+			Author:            &drive.User{DisplayName: "User"},
+		},
+	}
+
+	result := buildDocumentContext(docText, comments, "trigger", 0)
+
+	if !strings.Contains(result, "[Comment 1]") {
+		t.Errorf("expected comment marker, got:\n%s", result)
+	}
+}
+
+func TestBuildDocumentContext_ActiveCommentMarker(t *testing.T) {
+	docText := "Introduction.\nFix the bug here.\nConclusion."
+	comments := []*drive.Comment{
+		{
+			Id:                "trigger-id",
+			Content:           "Please fix this",
+			QuotedFileContent: &drive.CommentQuotedFileContent{Value: "Fix the bug here."},
+			Author:            &drive.User{DisplayName: "User"},
+		},
+		{
+			Id:                "other-id",
+			Content:           "Nice intro",
+			QuotedFileContent: &drive.CommentQuotedFileContent{Value: "Introduction."},
+			Author:            &drive.User{DisplayName: "Other"},
+		},
+	}
+
+	result := buildDocumentContext(docText, comments, "trigger-id", 0)
+
+	if !strings.Contains(result, "Fix the bug here. [Active Comment]") {
+		t.Errorf("expected [Active Comment] marker at triggering position, got:\n%s", result)
+	}
+	if !strings.Contains(result, "Introduction. [Comment 1]") {
+		t.Errorf("expected [Comment 1] on other comment, got:\n%s", result)
+	}
+	if strings.Contains(result, "Please fix this") {
+		t.Error("triggering comment content should not appear in OTHER COMMENTS")
+	}
+	if !strings.Contains(result, "Nice intro") {
+		t.Error("other comment content should appear in OTHER COMMENTS")
+	}
+}
+
+func TestBuildDocumentContext_ActiveCommentNoQuotedText(t *testing.T) {
+	docText := "Document text."
+	comments := []*drive.Comment{
+		{
+			Id:      "trigger-id",
+			Content: "General comment",
+			Author:  &drive.User{DisplayName: "User"},
+		},
+	}
+
+	result := buildDocumentContext(docText, comments, "trigger-id", 0)
+
+	if strings.Contains(result, "[Active Comment]") {
+		t.Error("should not add [Active Comment] marker when triggering comment has no quoted text")
+	}
 }
 
 func writeTestFile(path, content string) error {

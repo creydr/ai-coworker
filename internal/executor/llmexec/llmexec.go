@@ -28,14 +28,14 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 
 	if execCtx.Event != nil && execCtx.Event.Metadata != nil {
 		if thread := execCtx.Event.Metadata["comment_thread"]; thread != "" {
-			systemPrompt += "\n\n--- Comment thread you are responding to ---\n"
+			systemPrompt += "\n\n=== YOUR TASK ===\n"
 			if quoted := execCtx.Event.Metadata["quoted_text"]; quoted != "" {
-				systemPrompt += "Highlighted text: \"" + quoted + "\"\n"
+				systemPrompt += "Comment on: \"" + quoted + "\"\n"
 			}
 			systemPrompt += thread
 		}
 		if docCtx := execCtx.Event.Metadata["document_context"]; docCtx != "" {
-			systemPrompt += "\n--- Full document (for background context) ---\n" + docCtx
+			systemPrompt += "\n" + docCtx
 		}
 	}
 

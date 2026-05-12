@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -241,31 +242,38 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 		return fmt.Errorf("listing comments: %w", err)
 	}
 
+	var relevantComments []*drive.Comment
 	var latestModified string
-	var events []domain.IncomingEvent
-
 	for _, comment := range commentList.Comments {
-		if comment.Resolved {
+		if comment.Resolved || !a.isRelevantComment(comment) {
 			continue
 		}
-
-		if !a.isRelevantComment(comment) {
+		if extractContent(comment) == "" {
 			continue
 		}
-
-		content := extractContent(comment)
-		if content == "" {
-			continue
-		}
-
 		if comment.ModifiedTime > latestModified {
 			latestModified = comment.ModifiedTime
 		}
+		relevantComments = append(relevantComments, comment)
+	}
 
-		docContext, err := a.fetchDocumentContext(ctx, fileID)
-		if err != nil {
-			slog.Warn("failed to fetch document context", "file_id", fileID, "error", err)
-		}
+	if len(relevantComments) == 0 {
+		return nil
+	}
+
+	docText, err := a.fetchDocumentText(ctx, fileID)
+	if err != nil {
+		slog.Warn("failed to fetch document text", "file_id", fileID, "error", err)
+	}
+
+	allComments, err := a.fetchAllComments(ctx, fileID)
+	if err != nil {
+		slog.Warn("failed to fetch all comments", "file_id", fileID, "error", err)
+	}
+
+	var events []domain.IncomingEvent
+	for _, comment := range relevantComments {
+		docContext := buildDocumentContext(docText, allComments, comment.Id, a.contentMaxSize)
 
 		var userID string
 		if comment.Author != nil {
@@ -282,7 +290,7 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 			ChannelRef: ref,
 			ThreadID:   fmt.Sprintf("googledocs-%s-%s", fileID, comment.Id),
 			UserID:     userID,
-			Content:    content,
+			Content:    extractContent(comment),
 			Metadata: map[string]string{
 				"document_id":      fileID,
 				"comment_id":       comment.Id,
@@ -304,10 +312,8 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 		}
 	}
 
-	if len(events) > 0 {
-		if err := a.handler(ctx, events); err != nil {
-			return fmt.Errorf("handling events: %w", err)
-		}
+	if err := a.handler(ctx, events); err != nil {
+		return fmt.Errorf("handling events: %w", err)
 	}
 
 	return nil
@@ -360,15 +366,12 @@ func formatCommentThread(comment *drive.Comment) string {
 
 func extractContent(comment *drive.Comment) string {
 	if len(comment.Replies) > 0 {
-		lastReply := comment.Replies[len(comment.Replies)-1]
-		if lastReply.Author != nil {
-			return strings.TrimSpace(lastReply.Content)
-		}
+		return strings.TrimSpace(comment.Replies[len(comment.Replies)-1].Content)
 	}
 	return strings.TrimSpace(comment.Content)
 }
 
-func (a *Adapter) fetchDocumentContext(ctx context.Context, fileID string) (string, error) {
+func (a *Adapter) fetchDocumentText(ctx context.Context, fileID string) (string, error) {
 	resp, err := a.driveService.Files.Export(fileID, "text/plain").Context(ctx).Download()
 	if err != nil {
 		return "", fmt.Errorf("exporting document: %w", err)
@@ -380,39 +383,120 @@ func (a *Adapter) fetchDocumentContext(ctx context.Context, fileID string) (stri
 		return "", fmt.Errorf("reading document body: %w", err)
 	}
 
-	docText := string(body)
+	return string(body), nil
+}
 
+func (a *Adapter) fetchAllComments(ctx context.Context, fileID string) ([]*drive.Comment, error) {
 	commentList, err := a.driveService.Comments.List(fileID).
-		Fields("comments(id, content, resolved, author(displayName), replies(content, author(displayName)))").
+		Fields("comments(id, content, resolved, author(displayName), replies(content, author(displayName)), quotedFileContent(value))").
 		IncludeDeleted(false).
 		Context(ctx).Do()
 	if err != nil {
-		return docText, nil
+		return nil, fmt.Errorf("listing all comments: %w", err)
+	}
+	return commentList.Comments, nil
+}
+
+type commentRef struct {
+	index   int
+	pos     int
+	comment *drive.Comment
+}
+
+type markerInsertion struct {
+	insertAt int
+	marker   string
+}
+
+func buildDocumentContext(docText string, allComments []*drive.Comment, triggeringCommentID string, maxSize int64) string {
+	var refs []commentRef
+	for _, c := range allComments {
+		if c.Resolved || c.Id == triggeringCommentID {
+			continue
+		}
+		pos := -1
+		if c.QuotedFileContent != nil && c.QuotedFileContent.Value != "" {
+			pos = strings.Index(docText, c.QuotedFileContent.Value)
+		}
+		refs = append(refs, commentRef{pos: pos, comment: c})
+	}
+
+	sort.SliceStable(refs, func(i, j int) bool {
+		if refs[i].pos == -1 && refs[j].pos == -1 {
+			return false
+		}
+		if refs[i].pos == -1 {
+			return false
+		}
+		if refs[j].pos == -1 {
+			return true
+		}
+		return refs[i].pos < refs[j].pos
+	})
+
+	for i := range refs {
+		refs[i].index = i + 1
+	}
+
+	var markers []markerInsertion
+	for _, c := range allComments {
+		if c.Id == triggeringCommentID && c.QuotedFileContent != nil && c.QuotedFileContent.Value != "" {
+			if pos := strings.Index(docText, c.QuotedFileContent.Value); pos >= 0 {
+				markers = append(markers, markerInsertion{
+					insertAt: pos + len(c.QuotedFileContent.Value),
+					marker:   " [Active Comment]",
+				})
+			}
+			break
+		}
+	}
+	for _, r := range refs {
+		if r.pos == -1 {
+			continue
+		}
+		markers = append(markers, markerInsertion{
+			insertAt: r.pos + len(r.comment.QuotedFileContent.Value),
+			marker:   fmt.Sprintf(" [Comment %d]", r.index),
+		})
+	}
+
+	sort.SliceStable(markers, func(i, j int) bool {
+		return markers[i].insertAt > markers[j].insertAt
+	})
+
+	annotated := docText
+	for _, m := range markers {
+		annotated = annotated[:m.insertAt] + m.marker + annotated[m.insertAt:]
 	}
 
 	var sb strings.Builder
-	sb.WriteString(docText)
-	sb.WriteString("\n\n--- Document Comments ---\n")
-	for _, c := range commentList.Comments {
-		if c.Resolved {
-			continue
-		}
-		authorName := "Unknown"
-		if c.Author != nil {
-			authorName = c.Author.DisplayName
-		}
-		sb.WriteString(fmt.Sprintf("\n[%s]: %s\n", authorName, c.Content))
-		for _, r := range c.Replies {
-			replyAuthor := "Unknown"
-			if r.Author != nil {
-				replyAuthor = r.Author.DisplayName
+	sb.WriteString("=== DOCUMENT ===\n")
+	sb.WriteString(annotated)
+
+	if len(refs) > 0 {
+		sb.WriteString("\n\n=== OTHER COMMENTS ===\n")
+		for _, r := range refs {
+			if r.comment.QuotedFileContent != nil && r.comment.QuotedFileContent.Value != "" {
+				fmt.Fprintf(&sb, "\n[Comment %d] On: %q\n", r.index, r.comment.QuotedFileContent.Value)
+			} else {
+				fmt.Fprintf(&sb, "\n[Comment %d] (general comment)\n", r.index)
 			}
-			sb.WriteString(fmt.Sprintf("  [%s]: %s\n", replyAuthor, r.Content))
+			authorName := "Unknown"
+			if r.comment.Author != nil && r.comment.Author.DisplayName != "" {
+				authorName = r.comment.Author.DisplayName
+			}
+			fmt.Fprintf(&sb, "  [%s]: %s\n", authorName, r.comment.Content)
+			for _, reply := range r.comment.Replies {
+				replyAuthor := "Unknown"
+				if reply.Author != nil && reply.Author.DisplayName != "" {
+					replyAuthor = reply.Author.DisplayName
+				}
+				fmt.Fprintf(&sb, "    [%s]: %s\n", replyAuthor, reply.Content)
+			}
 		}
 	}
 
-	result := sb.String()
-	return truncateContent(result, a.contentMaxSize), nil
+	return truncateContent(sb.String(), maxSize)
 }
 
 func truncateContent(content string, maxSize int64) string {
