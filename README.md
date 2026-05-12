@@ -123,10 +123,12 @@ All settings can also be provided purely via environment variables — see [docs
 
 The bot can monitor Google Docs for comments and action items assigned to it, responding directly in the document's comment threads.
 
-1. Create a [Google Cloud service account](https://console.cloud.google.com/iam-admin/serviceaccounts) with the **Google Drive API** enabled.
-2. Generate a JSON key for the service account and store it securely.
-3. Share the Google Docs you want monitored with the service account's email address (found in the JSON key as `client_email`).
-4. Add the Google Docs settings to your `config.yaml`:
+1. **Create a Google Cloud project** (or use an existing one) at [console.cloud.google.com](https://console.cloud.google.com).
+2. **Enable the Google Drive API:** Go to **APIs & Services > Library**, search for "Google Drive API", and click **Enable**.
+3. **Create a service account:** Go to **IAM & Admin > [Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts)**, click **Create Service Account**, give it a name (e.g. `ai-coworker-bot`), and click **Done** (no roles needed).
+4. **Generate a JSON key:** Click on the service account, go to the **Keys** tab, click **Add Key > Create new key**, select **JSON**, and click **Create**. Your browser will download a `.json` file — store it securely.
+5. **Share your Google Docs** with the service account's email address (shown on the service account page and in the JSON key as `client_email`, e.g. `ai-coworker-bot@my-project.iam.gserviceaccount.com`). Grant **Commenter** access so the bot can read and reply to comments.
+6. Add the Google Docs settings to your `config.yaml`:
    ```yaml
    googledocs:
      enabled: true
