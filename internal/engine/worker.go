@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/creydr/ai-coworker/internal/adapter"
 	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/creydr/ai-coworker/internal/executor"
 	"github.com/creydr/ai-coworker/internal/store"
@@ -25,10 +26,15 @@ const (
 	reviewDebounce = 500 * time.Millisecond
 )
 
+// AdapterLookup resolves a channel name to its adapter.
+type AdapterLookup interface {
+	GetAdapter(name string) adapter.Adapter
+}
+
 // WorkerPool manages a pool of goroutines that claim and process tasks.
 type WorkerPool struct {
 	store      store.Store
-	router     *Router
+	adapters   AdapterLookup
 	classifier *IntentClassifier
 	codeExec   executor.Executor
 	llmExec    executor.Executor
@@ -39,7 +45,7 @@ type WorkerPool struct {
 // NewWorkerPool creates a new WorkerPool with the given dependencies.
 func NewWorkerPool(
 	s store.Store,
-	router *Router,
+	adapters AdapterLookup,
 	classifier *IntentClassifier,
 	codeExec executor.Executor,
 	llmExec executor.Executor,
@@ -47,7 +53,7 @@ func NewWorkerPool(
 ) *WorkerPool {
 	return &WorkerPool{
 		store:      s,
-		router:     router,
+		adapters:   adapters,
 		classifier: classifier,
 		codeExec:   codeExec,
 		llmExec:    llmExec,
@@ -229,7 +235,7 @@ func (wp *WorkerPool) failTask(ctx context.Context, workerID string, task *domai
 }
 
 func (wp *WorkerPool) sendResponse(ctx context.Context, ref domain.ChannelRef, message string) {
-	a := wp.router.GetAdapter(ref.Channel)
+	a := wp.adapters.GetAdapter(ref.Channel)
 	if a == nil {
 		slog.Warn("no adapter registered for channel", "channel", ref.Channel)
 		return

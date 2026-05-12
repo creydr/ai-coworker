@@ -572,7 +572,7 @@ func TestWorker_BatchedReviewRouting(t *testing.T) {
 
 	router := NewRouter(ms)
 	router.RegisterAdapter(adpt)
-	wp := &WorkerPool{store: ms, router: router}
+	wp := &WorkerPool{store: ms, adapters: router}
 	allTasks := append([]*domain.Task{primary}, absorbed...)
 	if err := wp.routeBatchedResponses(context.Background(), thread, allTasks, codeExec.result.Response); err != nil {
 		t.Fatalf("routeBatchedResponses returned error: %v", err)
@@ -636,7 +636,7 @@ func TestWorker_BatchedReviewFallback(t *testing.T) {
 
 	router := NewRouter(ms)
 	router.RegisterAdapter(adpt)
-	wp := &WorkerPool{store: ms, router: router}
+	wp := &WorkerPool{store: ms, adapters: router}
 
 	fullResponse := "I fixed everything in one go."
 	allTasks := append([]*domain.Task{primary}, absorbed...)
@@ -815,7 +815,7 @@ func TestWorker_BatchedCompletionUpdateFailure(t *testing.T) {
 	adpt := &mockAdapter{name: "github"}
 	router := NewRouter(ms)
 	router.RegisterAdapter(adpt)
-	wp := &WorkerPool{store: ms, router: router}
+	wp := &WorkerPool{store: ms, adapters: router}
 
 	primary := &domain.Task{
 		ID:       "task-1",
