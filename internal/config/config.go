@@ -205,6 +205,9 @@ func (c *Config) validate() error {
 		if c.GoogleDocs.ServiceAccountKeyPath == "" {
 			return fmt.Errorf("googledocs.serviceAccountKeyPath is required when googledocs is enabled")
 		}
+		if c.GoogleDocs.WebhookURL == "" {
+			return fmt.Errorf("googledocs.webhookUrl is required when googledocs is enabled")
+		}
 	}
 	if c.Slack.Enabled {
 		if c.Slack.AppToken == "" {
