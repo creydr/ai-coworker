@@ -262,6 +262,62 @@ func TestExtractContent_WithReplies(t *testing.T) {
 	}
 }
 
+func TestExtractContent_ReplyWithNilAuthor(t *testing.T) {
+	comment := &drive.Comment{
+		Content: "Original comment",
+		Author:  &drive.User{EmailAddress: "user@example.com"},
+		Replies: []*drive.Reply{
+			{Content: "Reply without author"},
+		},
+	}
+
+	content := extractContent(comment)
+	if content != "Reply without author" {
+		t.Errorf("content = %q, want %q", content, "Reply without author")
+	}
+}
+
+func TestFormatCommentThread(t *testing.T) {
+	comment := &drive.Comment{
+		Content: "Please review this",
+		Author:  &drive.User{DisplayName: "Alice"},
+		Replies: []*drive.Reply{
+			{Content: "Looking into it", Author: &drive.User{DisplayName: "Bot"}},
+			{Content: "Any update?", Author: &drive.User{DisplayName: "Alice"}},
+		},
+	}
+
+	result := formatCommentThread(comment)
+
+	if !strings.Contains(result, "[Alice]: Please review this") {
+		t.Errorf("expected original comment, got:\n%s", result)
+	}
+	if !strings.Contains(result, "[Bot]: Looking into it") {
+		t.Errorf("expected first reply, got:\n%s", result)
+	}
+	if !strings.Contains(result, "[Alice]: Any update?") {
+		t.Errorf("expected second reply, got:\n%s", result)
+	}
+}
+
+func TestFormatCommentThread_NilAuthor(t *testing.T) {
+	comment := &drive.Comment{
+		Content: "A comment",
+		Replies: []*drive.Reply{
+			{Content: "A reply"},
+		},
+	}
+
+	result := formatCommentThread(comment)
+
+	if !strings.Contains(result, "[Unknown]: A comment") {
+		t.Errorf("expected Unknown author for comment, got:\n%s", result)
+	}
+	if !strings.Contains(result, "[Unknown]: A reply") {
+		t.Errorf("expected Unknown author for reply, got:\n%s", result)
+	}
+}
+
 func TestExtractServiceAccountEmail_InvalidFile(t *testing.T) {
 	_, err := extractServiceAccountEmail("/nonexistent/path.json")
 	if err == nil {

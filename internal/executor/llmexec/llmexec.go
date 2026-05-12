@@ -3,6 +3,7 @@ package llmexec
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/creydr/ai-coworker/internal/executor"
@@ -30,7 +31,7 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 		if thread := execCtx.Event.Metadata["comment_thread"]; thread != "" {
 			systemPrompt += "\n\n=== YOUR TASK ===\n"
 			if quoted := execCtx.Event.Metadata["quoted_text"]; quoted != "" {
-				systemPrompt += "Comment on: \"" + quoted + "\"\n"
+				systemPrompt += "Comment on: " + strconv.Quote(quoted) + "\n"
 			}
 			systemPrompt += thread
 		}

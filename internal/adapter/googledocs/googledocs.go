@@ -155,11 +155,12 @@ func (a *Adapter) registerWatch(ctx context.Context) (time.Time, error) {
 
 	a.mu.Lock()
 	a.pageToken = startToken.StartPageToken
+	token := a.pageToken
 	a.mu.Unlock()
 
 	channelID := uuid.New().String()
 
-	channel, err := a.driveService.Changes.Watch(a.pageToken, &drive.Channel{
+	channel, err := a.driveService.Changes.Watch(token, &drive.Channel{
 		Id:      channelID,
 		Type:    "web_hook",
 		Address: a.webhookURL,
@@ -221,6 +222,7 @@ func (a *Adapter) processChanges(ctx context.Context) error {
 	token := a.pageToken
 	a.mu.Unlock()
 
+	seen := map[string]bool{}
 	var docIDs []string
 	for {
 		changeList, err := a.driveService.Changes.List(token).
@@ -234,7 +236,10 @@ func (a *Adapter) processChanges(ctx context.Context) error {
 			if change.File == nil || change.File.MimeType != "application/vnd.google-apps.document" {
 				continue
 			}
-			docIDs = append(docIDs, change.FileId)
+			if !seen[change.FileId] {
+				seen[change.FileId] = true
+				docIDs = append(docIDs, change.FileId)
+			}
 		}
 
 		if changeList.NewStartPageToken != "" {
