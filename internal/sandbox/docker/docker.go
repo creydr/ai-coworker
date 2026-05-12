@@ -198,7 +198,7 @@ func (r *Runtime) ensureImage(ctx context.Context, img string) error {
 	var lastErr error
 	for attempt := range 3 {
 		if attempt > 0 {
-			backoff := time.Duration(1<<(attempt-1)) * time.Second
+			backoff := time.Duration(min(1<<(attempt-1), 30)) * time.Second
 			select {
 			case <-ctx.Done():
 				return ctx.Err()

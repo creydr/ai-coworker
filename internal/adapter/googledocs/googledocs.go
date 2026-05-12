@@ -494,6 +494,22 @@ type markerInsertion struct {
 }
 
 func buildDocumentContext(docText string, allComments []*drive.Comment, triggeringCommentID string, maxSize int64) string {
+	refs := indexComments(docText, allComments, triggeringCommentID)
+	annotated := insertInlineMarkers(docText, refs, allComments, triggeringCommentID)
+
+	var sb strings.Builder
+	sb.WriteString("=== DOCUMENT ===\n")
+	sb.WriteString(annotated)
+
+	if len(refs) > 0 {
+		sb.WriteString("\n\n=== OTHER COMMENTS ===\n")
+		sb.WriteString(formatCommentSection(refs))
+	}
+
+	return truncateContent(sb.String(), maxSize)
+}
+
+func indexComments(docText string, allComments []*drive.Comment, triggeringCommentID string) []commentRef {
 	var refs []commentRef
 	for _, c := range allComments {
 		if c.Resolved || c.Id == triggeringCommentID {
@@ -522,7 +538,10 @@ func buildDocumentContext(docText string, allComments []*drive.Comment, triggeri
 	for i := range refs {
 		refs[i].index = i + 1
 	}
+	return refs
+}
 
+func insertInlineMarkers(docText string, refs []commentRef, allComments []*drive.Comment, triggeringCommentID string) string {
 	var markers []markerInsertion
 	for _, c := range allComments {
 		if c.Id == triggeringCommentID && c.QuotedFileContent != nil && c.QuotedFileContent.Value != "" {
@@ -549,39 +568,35 @@ func buildDocumentContext(docText string, allComments []*drive.Comment, triggeri
 		return markers[i].insertAt > markers[j].insertAt
 	})
 
-	annotated := docText
+	result := docText
 	for _, m := range markers {
-		annotated = annotated[:m.insertAt] + m.marker + annotated[m.insertAt:]
+		result = result[:m.insertAt] + m.marker + result[m.insertAt:]
 	}
+	return result
+}
 
+func formatCommentSection(refs []commentRef) string {
 	var sb strings.Builder
-	sb.WriteString("=== DOCUMENT ===\n")
-	sb.WriteString(annotated)
-
-	if len(refs) > 0 {
-		sb.WriteString("\n\n=== OTHER COMMENTS ===\n")
-		for _, r := range refs {
-			if r.comment.QuotedFileContent != nil && r.comment.QuotedFileContent.Value != "" {
-				fmt.Fprintf(&sb, "\n[Comment %d] On: %q\n", r.index, r.comment.QuotedFileContent.Value)
-			} else {
-				fmt.Fprintf(&sb, "\n[Comment %d] (general comment)\n", r.index)
+	for _, r := range refs {
+		if r.comment.QuotedFileContent != nil && r.comment.QuotedFileContent.Value != "" {
+			fmt.Fprintf(&sb, "\n[Comment %d] On: %q\n", r.index, r.comment.QuotedFileContent.Value)
+		} else {
+			fmt.Fprintf(&sb, "\n[Comment %d] (general comment)\n", r.index)
+		}
+		authorName := "Unknown"
+		if r.comment.Author != nil && r.comment.Author.DisplayName != "" {
+			authorName = r.comment.Author.DisplayName
+		}
+		fmt.Fprintf(&sb, "  [%s]: %s\n", authorName, r.comment.Content)
+		for _, reply := range r.comment.Replies {
+			replyAuthor := "Unknown"
+			if reply.Author != nil && reply.Author.DisplayName != "" {
+				replyAuthor = reply.Author.DisplayName
 			}
-			authorName := "Unknown"
-			if r.comment.Author != nil && r.comment.Author.DisplayName != "" {
-				authorName = r.comment.Author.DisplayName
-			}
-			fmt.Fprintf(&sb, "  [%s]: %s\n", authorName, r.comment.Content)
-			for _, reply := range r.comment.Replies {
-				replyAuthor := "Unknown"
-				if reply.Author != nil && reply.Author.DisplayName != "" {
-					replyAuthor = reply.Author.DisplayName
-				}
-				fmt.Fprintf(&sb, "    [%s]: %s\n", replyAuthor, reply.Content)
-			}
+			fmt.Fprintf(&sb, "    [%s]: %s\n", replyAuthor, reply.Content)
 		}
 	}
-
-	return truncateContent(sb.String(), maxSize)
+	return sb.String()
 }
 
 func truncateContent(content string, maxSize int64) string {
