@@ -841,6 +841,60 @@ func TestWorker_BatchedCompletionUpdateFailure(t *testing.T) {
 	}
 }
 
+func TestWorker_ExecutionError_SanitizedResponse(t *testing.T) {
+	ms := newMockStore()
+	adapter := &mockAdapter{name: "github"}
+	router := NewRouter(ms)
+	router.RegisterAdapter(adapter)
+
+	codeExec := &mockExecutor{
+		err: fmt.Errorf("connection refused: dial tcp 10.0.0.1:5432: connect: connection refused"),
+	}
+	llmExec := &mockExecutor{
+		result: &executor.Result{Response: "llm"},
+	}
+	classifier := NewIntentClassifier(&mockLLMProvider{response: "code_task"})
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+
+	thread := &domain.Thread{
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#1",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "1",
+			},
+		},
+		Status: domain.ThreadActive,
+	}
+	ms.threads["thread-1"] = thread
+
+	task := &domain.Task{
+		ID:       "task-1",
+		ThreadID: "thread-1",
+		Status:   domain.TaskInProgress,
+		Input:    "do something",
+	}
+
+	wp.processTask(context.Background(), "worker-0", task)
+
+	if len(adapter.responseCalls) != 1 {
+		t.Fatalf("expected 1 response call, got %d", len(adapter.responseCalls))
+	}
+
+	response := adapter.responseCalls[0].Message
+	if strings.Contains(response, "connection refused") {
+		t.Errorf("user-facing response leaks internal error details: %q", response)
+	}
+	if strings.Contains(response, "10.0.0.1") {
+		t.Errorf("user-facing response leaks internal IP address: %q", response)
+	}
+	if !strings.Contains(response, "Sorry") {
+		t.Errorf("expected user-friendly error message, got: %q", response)
+	}
+}
+
 func TestWorker_TaskStatusUpdated(t *testing.T) {
 	ms, _, _, _, wp := newWorkerTestSetup()
 
