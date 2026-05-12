@@ -177,7 +177,7 @@ func renderConfig(params configParams) (string, error) {
 	defer f.Close()
 
 	if err := tmpl.Execute(f, params); err != nil {
-		os.Remove(f.Name())
+		_ = os.Remove(f.Name())
 		return "", fmt.Errorf("executing template: %w", err)
 	}
 
@@ -189,13 +189,13 @@ func buildBinary() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	f.Close()
+	_ = f.Close()
 
 	cmd := exec.Command("go", "build", "-o", f.Name(), "../../cmd/ai-coworker")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		os.Remove(f.Name())
+		_ = os.Remove(f.Name())
 		return "", fmt.Errorf("building binary: %w", err)
 	}
 
@@ -219,7 +219,7 @@ func waitForReady(addr string, timeout time.Duration) error {
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(url)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil
 		}
 		time.Sleep(250 * time.Millisecond)
