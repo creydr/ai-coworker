@@ -140,18 +140,17 @@ func TestBuildJob(t *testing.T) {
 		t.Errorf("Volumes not configured correctly")
 	}
 
-	sc := c.SecurityContext
-	if sc == nil {
+	if c.SecurityContext == nil {
 		t.Fatal("SecurityContext is nil")
 	}
-	if sc.RunAsNonRoot == nil || !*sc.RunAsNonRoot {
+	if c.SecurityContext.RunAsNonRoot == nil || !*c.SecurityContext.RunAsNonRoot {
 		t.Error("RunAsNonRoot should be true")
 	}
-	if sc.AllowPrivilegeEscalation == nil || *sc.AllowPrivilegeEscalation {
+	if c.SecurityContext.AllowPrivilegeEscalation == nil || *c.SecurityContext.AllowPrivilegeEscalation {
 		t.Error("AllowPrivilegeEscalation should be false")
 	}
-	if sc.Capabilities == nil || len(sc.Capabilities.Drop) != 1 || sc.Capabilities.Drop[0] != "ALL" {
-		t.Errorf("Capabilities.Drop = %v, want [ALL]", sc.Capabilities)
+	if c.SecurityContext.Capabilities == nil || len(c.SecurityContext.Capabilities.Drop) != 1 || c.SecurityContext.Capabilities.Drop[0] != "ALL" {
+		t.Errorf("Capabilities.Drop = %v, want [ALL]", c.SecurityContext.Capabilities)
 	}
 }
 

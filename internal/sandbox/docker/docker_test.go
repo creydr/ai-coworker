@@ -148,8 +148,8 @@ func TestHostConfig_SecurityHardening(t *testing.T) {
 	if len(hc.SecurityOpt) != 1 || hc.SecurityOpt[0] != "no-new-privileges" {
 		t.Errorf("SecurityOpt = %v, want [no-new-privileges]", hc.SecurityOpt)
 	}
-	if hc.Resources.NanoCPUs != 2e9 {
-		t.Errorf("NanoCPUs = %d, want %d", hc.Resources.NanoCPUs, int64(2e9))
+	if hc.NanoCPUs != 2e9 {
+		t.Errorf("NanoCPUs = %d, want %d", hc.NanoCPUs, int64(2e9))
 	}
 	if len(hc.Binds) != 1 {
 		t.Errorf("Binds = %v, want 1 entry", hc.Binds)
