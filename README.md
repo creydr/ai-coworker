@@ -145,6 +145,27 @@ Mention the bot in any channel it's been added to:
 
 Responses are threaded automatically.
 
+## Skill Images
+
+Skill images are OCI container images that package [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/skills) for use inside sandbox containers. They let you extend the agent's capabilities without rebuilding the sandbox image.
+
+A skill image is a `scratch`-based container with skill directories under `/skills/{name}/`:
+
+```dockerfile
+FROM scratch
+COPY . /skills/
+```
+
+Configure them globally in `config.yaml`:
+
+```yaml
+sandbox:
+  skillImages:
+    - "quay.io/myorg/my-skills:latest"
+```
+
+At runtime, skill files are mounted read-only into the sandbox at `/opt/skills-{n}/` and symlinked into `~/.claude/skills/` so Claude Code discovers them automatically. Both Docker (via bind-mount) and Kubernetes (via native OCI image volumes) runtimes are supported.
+
 ## Deployment
 
 The default setup uses Docker for local development. Kubernetes deployment with Kustomize manifests is also available. See [docs/deployment.md](docs/deployment.md) for all deployment options, the full configuration reference, and LLM provider setup.

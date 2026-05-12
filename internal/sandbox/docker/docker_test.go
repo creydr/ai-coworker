@@ -1,7 +1,10 @@
 package docker
 
 import (
+	"archive/tar"
+	"bytes"
 	"os"
+	"path/filepath"
 	"sort"
 	"testing"
 )
@@ -196,5 +199,267 @@ func TestParseMemLimit(t *testing.T) {
 				t.Errorf("parseMemLimit(%q) = %d, want %d", tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestExtractTar(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+
+	files := []struct {
+		name    string
+		content string
+	}{
+		{"skills/my-skill/skill.md", "# My Skill\n"},
+		{"skills/my-skill/helper.sh", "#!/bin/sh\necho hello\n"},
+	}
+
+	for _, f := range files {
+		hdr := &tar.Header{
+			Name: f.name,
+			Mode: 0644,
+			Size: int64(len(f.content)),
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(f.content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	if err := extractTar(&buf, dir); err != nil {
+		t.Fatalf("extractTar failed: %v", err)
+	}
+
+	for _, f := range files {
+		path := filepath.Join(dir, f.name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("expected file %s to exist: %v", f.name, err)
+			continue
+		}
+		if string(data) != f.content {
+			t.Errorf("file %s content = %q, want %q", f.name, string(data), f.content)
+		}
+	}
+}
+
+func TestCleanupSkillDirs(t *testing.T) {
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+
+	if _, err := os.Stat(dir1); err != nil {
+		t.Fatalf("dir1 should exist before cleanup: %v", err)
+	}
+
+	cleanupSkillDirs([]string{dir1, dir2})
+
+	if _, err := os.Stat(dir1); !os.IsNotExist(err) {
+		t.Errorf("dir1 should be removed after cleanup")
+	}
+	if _, err := os.Stat(dir2); !os.IsNotExist(err) {
+		t.Errorf("dir2 should be removed after cleanup")
+	}
+}
+
+func TestCleanupSkillDirsEmpty(t *testing.T) {
+	cleanupSkillDirs(nil)
+	cleanupSkillDirs([]string{})
+}
+
+func TestExtractTarPathTraversal(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"dotdot prefix", "../../etc/passwd"},
+		{"dotdot nested", "skills/../../../etc/shadow"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			tw := tar.NewWriter(&buf)
+			hdr := &tar.Header{
+				Name: tt.path,
+				Mode: 0644,
+				Size: 5,
+			}
+			if err := tw.WriteHeader(hdr); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tw.Write([]byte("pwned")); err != nil {
+				t.Fatal(err)
+			}
+			if err := tw.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			dir := t.TempDir()
+			err := extractTar(&buf, dir)
+			if err == nil {
+				t.Fatal("expected error for path traversal, got nil")
+			}
+			if !bytes.Contains([]byte(err.Error()), []byte("escapes destination")) {
+				t.Errorf("unexpected error message: %v", err)
+			}
+		})
+	}
+}
+
+func TestExtractTarSymlink(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+
+	hdr := &tar.Header{
+		Name: "skills/shared.md",
+		Mode: 0644,
+		Size: 7,
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte("shared\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	hdr = &tar.Header{
+		Typeflag: tar.TypeSymlink,
+		Name:     "skills/link.md",
+		Linkname: "shared.md",
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	if err := extractTar(&buf, dir); err != nil {
+		t.Fatalf("extractTar failed: %v", err)
+	}
+
+	target, err := os.Readlink(filepath.Join(dir, "skills/link.md"))
+	if err != nil {
+		t.Fatalf("expected symlink to exist: %v", err)
+	}
+	if target != "shared.md" {
+		t.Errorf("symlink target = %q, want %q", target, "shared.md")
+	}
+}
+
+func TestExtractTarSymlinkTraversal(t *testing.T) {
+	tests := []struct {
+		name     string
+		linkname string
+	}{
+		{"absolute target", "/etc/passwd"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			tw := tar.NewWriter(&buf)
+			hdr := &tar.Header{
+				Typeflag: tar.TypeSymlink,
+				Name:     "skills/evil-link",
+				Linkname: tt.linkname,
+			}
+			if err := tw.WriteHeader(hdr); err != nil {
+				t.Fatal(err)
+			}
+			if err := tw.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			dir := t.TempDir()
+			err := extractTar(&buf, dir)
+			if err == nil {
+				t.Fatal("expected error for symlink traversal, got nil")
+			}
+		})
+	}
+}
+
+func TestExtractTarSymlinkRelativeTraversal(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	hdr := &tar.Header{
+		Typeflag: tar.TypeSymlink,
+		Name:     "skills/evil-link",
+		Linkname: "../../etc/passwd",
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	err := extractTar(&buf, dir)
+	if err == nil {
+		t.Fatal("expected error for relative symlink traversal, got nil")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("escapes destination")) {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestExtractTarOversizedFile(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	hdr := &tar.Header{
+		Name: "skills/huge.bin",
+		Mode: 0644,
+		Size: maxSkillFileSize + 1,
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	_ = tw.Close() // intentionally incomplete tar entry
+
+	dir := t.TempDir()
+	err := extractTar(&buf, dir)
+	if err == nil {
+		t.Fatal("expected error for oversized file, got nil")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("exceeds")) {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestExtractTarOversizedActualData(t *testing.T) {
+	oversized := make([]byte, maxSkillFileSize+1)
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	hdr := &tar.Header{
+		Name: "skills/sneaky.bin",
+		Mode: 0644,
+		Size: int64(len(oversized)),
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(oversized); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	err := extractTar(&buf, dir)
+	if err == nil {
+		t.Fatal("expected error for oversized actual data, got nil")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("exceeds")) {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }

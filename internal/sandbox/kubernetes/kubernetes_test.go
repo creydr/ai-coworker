@@ -140,3 +140,60 @@ func TestBuildJob(t *testing.T) {
 		t.Errorf("Volumes not configured correctly")
 	}
 }
+
+func TestBuildJobWithSkillImages(t *testing.T) {
+	req := sandbox.ExecRequest{
+		Image:       "quay.io/test/sandbox:latest",
+		EnvVars:     map[string]string{"KEY": "val"},
+		SkillImages: []string{"quay.io/org/skills-a:latest", "ghcr.io/org/skills-b:v1"},
+	}
+	resources := buildResources("1", "1Gi")
+	job := buildJob("sandbox-abc123", "test-ns", "my-sa", req, resources)
+
+	pod := job.Spec.Template.Spec
+	c := pod.Containers[0]
+
+	// 1 prompt + 2 skill mounts
+	if len(c.VolumeMounts) != 3 {
+		t.Fatalf("len(VolumeMounts) = %d, want 3", len(c.VolumeMounts))
+	}
+	if c.VolumeMounts[1].MountPath != "/opt/skills-0" || !c.VolumeMounts[1].ReadOnly {
+		t.Errorf("skill-0 mount = %+v, want /opt/skills-0 read-only", c.VolumeMounts[1])
+	}
+	if c.VolumeMounts[2].MountPath != "/opt/skills-1" || !c.VolumeMounts[2].ReadOnly {
+		t.Errorf("skill-1 mount = %+v, want /opt/skills-1 read-only", c.VolumeMounts[2])
+	}
+
+	// 1 prompt volume + 2 skill image volumes
+	if len(pod.Volumes) != 3 {
+		t.Fatalf("len(Volumes) = %d, want 3", len(pod.Volumes))
+	}
+	if pod.Volumes[1].Image == nil || pod.Volumes[1].Image.Reference != "quay.io/org/skills-a:latest" {
+		t.Errorf("skill-0 volume image = %+v, want quay.io/org/skills-a:latest", pod.Volumes[1])
+	}
+	if pod.Volumes[1].Image.PullPolicy != corev1.PullIfNotPresent {
+		t.Errorf("skill-0 pullPolicy = %q, want IfNotPresent", pod.Volumes[1].Image.PullPolicy)
+	}
+	if pod.Volumes[2].Image == nil || pod.Volumes[2].Image.Reference != "ghcr.io/org/skills-b:v1" {
+		t.Errorf("skill-1 volume image = %+v, want ghcr.io/org/skills-b:v1", pod.Volumes[2])
+	}
+}
+
+func TestBuildJobWithoutSkillImages(t *testing.T) {
+	req := sandbox.ExecRequest{
+		Image:   "quay.io/test/sandbox:latest",
+		EnvVars: map[string]string{"KEY": "val"},
+	}
+	resources := buildResources("1", "1Gi")
+	job := buildJob("sandbox-abc123", "test-ns", "my-sa", req, resources)
+
+	pod := job.Spec.Template.Spec
+	c := pod.Containers[0]
+
+	if len(c.VolumeMounts) != 1 {
+		t.Errorf("len(VolumeMounts) = %d, want 1 (prompt only)", len(c.VolumeMounts))
+	}
+	if len(pod.Volumes) != 1 {
+		t.Errorf("len(Volumes) = %d, want 1 (prompt only)", len(pod.Volumes))
+	}
+}

@@ -21,6 +21,7 @@ type Executor struct {
 	timeout     int
 	cpuLimit    string
 	memLimit    string
+	skillImages []string
 	vcsRegistry *vcs.Registry
 }
 
@@ -33,6 +34,7 @@ type Config struct {
 	TimeoutSeconds int
 	CPULimit       string
 	MemoryLimit    string
+	SkillImages    []string
 	VCSRegistry    *vcs.Registry
 }
 
@@ -46,6 +48,7 @@ func New(cfg Config) *Executor {
 		timeout:     cfg.TimeoutSeconds,
 		cpuLimit:    cfg.CPULimit,
 		memLimit:    cfg.MemoryLimit,
+		skillImages: cfg.SkillImages,
 		vcsRegistry: cfg.VCSRegistry,
 	}
 }
@@ -62,15 +65,16 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 	envVars := e.collectVCSTokens(ctx, primaryProvider, repo, allMatches)
 
 	req := sandbox.ExecRequest{
-		Image:    e.image,
-		CloneURL: cloneURL,
-		Branch:   branch,
-		Prompt:   prompt,
-		EnvVars:  envVars,
-		Binds:    e.binds,
-		Timeout:  e.timeout,
-		CPULimit: e.cpuLimit,
-		MemLimit: e.memLimit,
+		Image:       e.image,
+		CloneURL:    cloneURL,
+		Branch:      branch,
+		Prompt:      prompt,
+		EnvVars:     envVars,
+		Binds:       e.binds,
+		Timeout:     e.timeout,
+		CPULimit:    e.cpuLimit,
+		MemLimit:    e.memLimit,
+		SkillImages: e.skillImages,
 	}
 
 	result, err := e.runtime.Exec(ctx, req)
