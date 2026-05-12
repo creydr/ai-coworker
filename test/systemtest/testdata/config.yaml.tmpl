@@ -1,0 +1,24 @@
+database:
+  url: "{{.DatabaseURL}}"
+
+llm:
+  provider: openai
+  model: qwen2.5:0.5b
+  openai:
+    baseUrl: "{{.OllamaURL}}"
+
+github:
+  enabled: true
+  appId: 12345
+  privateKey: "{{.PrivateKey}}"
+  webhookSecret: "{{.WebhookSecret}}"
+  botUsername: "test-bot"
+  allowedUsers: ["*"]
+  listenAddr: ":18080"
+  apiBaseUrl: "{{.FakeGitHubURL}}"
+
+sandbox:
+  runtime: docker
+  image: "ai-coworker-systemtest-sandbox:latest"
+
+workers: 1
