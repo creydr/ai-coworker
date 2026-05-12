@@ -192,15 +192,30 @@ func (r *Runtime) waitAndCollectLogs(ctx context.Context, containerID string) (*
 	}, nil
 }
 
-// ensureImage pulls the given image so it is available locally.
+// ensureImage pulls the given image so it is available locally, retrying on
+// transient errors up to 3 times with exponential backoff.
 func (r *Runtime) ensureImage(ctx context.Context, img string) error {
-	pullReader, err := r.client.ImagePull(ctx, img, image.PullOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to pull image %s: %w", img, err)
+	var lastErr error
+	for attempt := range 3 {
+		if attempt > 0 {
+			backoff := time.Duration(1<<(attempt-1)) * time.Second
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+		pullReader, err := r.client.ImagePull(ctx, img, image.PullOptions{})
+		if err != nil {
+			lastErr = err
+			slog.Warn("image pull failed, retrying", "image", img, "attempt", attempt+1, "error", err)
+			continue
+		}
+		_, _ = io.Copy(io.Discard, pullReader)
+		_ = pullReader.Close()
+		return nil
 	}
-	_, _ = io.Copy(io.Discard, pullReader)
-	_ = pullReader.Close()
-	return nil
+	return fmt.Errorf("failed to pull image %s: %w", img, lastErr)
 }
 
 // createContainer creates and starts a container, returning its ID and a
