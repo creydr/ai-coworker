@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ type Adapter struct {
 	webhookSecret       []byte
 	botUsername         string
 	listenAddr          string
+	apiBaseURL          string
 	server              *http.Server
 	allowedUsers        map[string]bool
 	allowAll            bool
@@ -36,10 +38,14 @@ type Adapter struct {
 //   - empty list: nobody is allowed (secure by default)
 //   - list containing "*": all users are allowed
 //   - list of usernames: only those users are allowed
-func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAddr string, allowedUsers []string) (*Adapter, error) {
+func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAddr, apiBaseURL string, allowedUsers []string) (*Adapter, error) {
 	atr, err := ghinstallation.NewAppsTransport(http.DefaultTransport, appID, privateKeyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("creating GitHub Apps transport: %w", err)
+	}
+
+	if apiBaseURL != "" {
+		atr.BaseURL = apiBaseURL
 	}
 
 	allowAll := false
@@ -54,10 +60,11 @@ func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAd
 
 	return &Adapter{
 		appsTransport: atr,
-		vcsProvider:   vcsgithub.New(atr),
+		vcsProvider:   vcsgithub.New(atr, apiBaseURL),
 		webhookSecret: []byte(webhookSecret),
 		botUsername:   botUsername,
 		listenAddr:    listenAddr,
+		apiBaseURL:    apiBaseURL,
 		allowedUsers:  users,
 		allowAll:      allowAll,
 	}, nil
@@ -66,6 +73,10 @@ func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAd
 func (a *Adapter) getInstallationClient(installationID int64) *gh.Client {
 	itr := ghinstallation.NewFromAppsTransport(a.appsTransport, installationID)
 	client := gh.NewClient(&http.Client{Transport: itr})
+	if a.apiBaseURL != "" {
+		baseURL, _ := url.Parse(strings.TrimRight(a.apiBaseURL, "/") + "/")
+		client.BaseURL = baseURL
+	}
 	v, _ := a.installationClients.LoadOrStore(installationID, client)
 	return v.(*gh.Client)
 }
