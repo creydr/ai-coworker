@@ -1,4 +1,4 @@
-.PHONY: build run test docker sandbox-image dev-db lint kind-create kind-load kind-deploy kind-smee kind-delete
+.PHONY: build run test test-integration vet docker sandbox-image dev-db lint kind-create kind-load kind-deploy kind-smee kind-delete
 
 REGISTRY ?= ghcr.io/creydr
 IMAGE ?= $(REGISTRY)/ai-coworker:latest
@@ -11,7 +11,13 @@ run: build
 	./ai-coworker $(ARGS)
 
 test:
-	go test ./...
+	go test -race ./...
+
+test-integration:
+	go test -race -tags integration ./...
+
+vet:
+	go vet ./...
 
 docker:
 	docker build -t $(IMAGE) .
