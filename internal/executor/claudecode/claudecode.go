@@ -113,7 +113,7 @@ func (e *Executor) resolveVCSContext(execCtx *executor.Context) (vcs.Provider, s
 		}
 	}
 
-	// Tier 2: extract repo URLs from message content + thread history.
+	// Tier 2: extract repo URLs from message content, thread history, and metadata.
 	var allMatches []vcs.RepoMatch
 	if e.vcsRegistry != nil {
 		if execCtx.Task != nil {
@@ -121,6 +121,11 @@ func (e *Executor) resolveVCSContext(execCtx *executor.Context) (vcs.Provider, s
 		}
 		for _, msg := range execCtx.Messages {
 			allMatches = append(allMatches, e.vcsRegistry.ExtractReposFromText(msg.Content)...)
+		}
+		if execCtx.Event != nil && execCtx.Event.Metadata != nil {
+			for _, v := range execCtx.Event.Metadata {
+				allMatches = append(allMatches, e.vcsRegistry.ExtractReposFromText(v)...)
+			}
 		}
 		if repo == "" && len(allMatches) > 0 {
 			repo = allMatches[0].Repo
@@ -211,6 +216,20 @@ func buildPrompt(execCtx *executor.Context) string {
 			} else if end := execCtx.Event.Metadata["line"]; end != "" {
 				fmt.Fprintf(&sb, " (line %s)", end)
 			}
+			sb.WriteString("\n\n")
+		}
+
+		if thread := execCtx.Event.Metadata["comment_thread"]; thread != "" {
+			sb.WriteString("=== YOUR TASK ===\n")
+			if quoted := execCtx.Event.Metadata["quoted_text"]; quoted != "" {
+				fmt.Fprintf(&sb, "Comment on: %q\n", quoted)
+			}
+			sb.WriteString(thread)
+			sb.WriteString("\n")
+		}
+
+		if docCtx := execCtx.Event.Metadata["document_context"]; docCtx != "" {
+			sb.WriteString(docCtx)
 			sb.WriteString("\n\n")
 		}
 	}

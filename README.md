@@ -1,6 +1,6 @@
 # AI Coworker
 
-An autonomous AI agent that executes software development tasks end-to-end through pluggable channel adapters. Ships with GitHub and Slack support — mention it on a GitHub issue and it will discuss the problem, write code, and open a pull request; tag it in Slack and it will answer questions or kick off tasks. New channels can be added by implementing the `adapter.Adapter` interface.
+An autonomous AI agent that executes software development tasks end-to-end through pluggable channel adapters. Ships with GitHub, Slack, and Google Docs support — mention it on a GitHub issue and it will discuss the problem, write code, and open a pull request; tag it in Slack and it will answer questions or kick off tasks; assign it an action item in a Google Doc and it will respond right in the comment thread. New channels can be added by implementing the `adapter.Adapter` interface.
 
 https://github.com/user-attachments/assets/e59fb872-1747-41f7-94ff-21a8a600e898
 
@@ -119,6 +119,37 @@ https://github.com/creydr/ai-coworker/raw/main/docs/video/demo-slack-github-inte
 
 All settings can also be provided purely via environment variables — see [docs/deployment.md](docs/deployment.md#environment-variables) for the full reference.
 
+## Google Docs Setup
+
+The bot can monitor Google Docs for comments and action items assigned to it, responding directly in the document's comment threads.
+
+1. **Create a Google Cloud project** (or use an existing one) at [console.cloud.google.com](https://console.cloud.google.com).
+2. **Enable the Google Drive API:** Go to **APIs & Services > Library**, search for "Google Drive API", and click **Enable**.
+3. **Create a service account:** Go to **IAM & Admin > [Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts)**, click **Create Service Account**, give it a name (e.g. `ai-coworker-bot`), and click **Done** (no roles needed).
+4. **Generate a JSON key:** Click on the service account, go to the **Keys** tab, click **Add Key > Create new key**, select **JSON**, and click **Create**. Your browser will download a `.json` file — store it securely.
+5. **Share your Google Docs** with the service account's email address (shown on the service account page and in the JSON key as `client_email`, e.g. `ai-coworker-bot@my-project.iam.gserviceaccount.com`). Grant **Commenter** access so the bot can read and reply to comments.
+6. Add the Google Docs settings to your `config.yaml`:
+   ```yaml
+   googledocs:
+     enabled: true
+     serviceAccountKeyPath: "/path/to/service-account-key.json"
+     listenAddr: ":8082"
+     webhookUrl: "https://your-public-url.example.com"
+     documentContentMaxSize: "100KB"
+   ```
+
+   - `listenAddr`: address for the local webhook server (default `:8082`)
+   - `webhookUrl`: public HTTPS URL registered with Google Drive for push notifications. For local development, use the URL from [ngrok](https://ngrok.com) or a [smee.io](https://smee.io) channel.
+   - `documentContentMaxSize`: max document context size sent to the LLM (`100KB`, `1MB`, or `0` to disable the limit)
+
+The adapter uses Google Drive push notifications to detect changes, then polls comments only on modified documents. To receive push notifications locally, use a tool like [smee.io](https://smee.io) or [ngrok](https://ngrok.com) to expose the webhook endpoint.
+
+**Interacting with the bot:**
+- **Mention:** Include the service account email in a comment (e.g. `@bot-sa@project.iam.gserviceaccount.com please review this section`)
+- **Action item:** Assign an action item to the service account email in a comment
+
+All settings can also be provided purely via environment variables — see [docs/deployment.md](docs/deployment.md#environment-variables) for the full reference.
+
 ## Usage
 
 ### GitHub
@@ -144,6 +175,19 @@ Mention the bot in any channel it's been added to:
 ```
 
 Responses are threaded automatically.
+
+### Google Docs
+
+Assign an action item or mention the bot's service account email in a comment on any shared Google Doc:
+
+```
+@bot-sa@project.iam.gserviceaccount.com Can you summarize the key decisions in this document?
+```
+
+The bot will:
+1. Reply with "Looking into this..." to acknowledge
+2. Read the full document content and comment history for context
+3. Respond directly in the comment thread
 
 ## Skill Images
 

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -29,12 +30,13 @@ const (
 )
 
 type Config struct {
-	Database DatabaseConfig `koanf:"database"`
-	LLM      LLMConfig      `koanf:"llm"`
-	Slack    SlackConfig    `koanf:"slack"`
-	GitHub   GitHubConfig   `koanf:"github"`
-	Sandbox  SandboxConfig  `koanf:"sandbox"`
-	Workers  int            `koanf:"workers"`
+	Database   DatabaseConfig   `koanf:"database"`
+	LLM        LLMConfig        `koanf:"llm"`
+	Slack      SlackConfig      `koanf:"slack"`
+	GitHub     GitHubConfig     `koanf:"github"`
+	GoogleDocs GoogleDocsConfig `koanf:"googledocs"`
+	Sandbox    SandboxConfig    `koanf:"sandbox"`
+	Workers    int              `koanf:"workers"`
 }
 
 type DatabaseConfig struct {
@@ -72,6 +74,15 @@ type GitHubConfig struct {
 	BotUsername   string   `koanf:"botUsername"`
 	AllowedUsers  []string `koanf:"allowedUsers"`
 	ListenAddr    string   `koanf:"listenAddr"`
+}
+
+type GoogleDocsConfig struct {
+	Enabled                bool   `koanf:"enabled"`
+	ServiceAccountKeyPath  string `koanf:"serviceAccountKeyPath"`
+	ListenAddr             string `koanf:"listenAddr"`
+	WebhookURL             string `koanf:"webhookUrl"`
+	DocumentContentMaxSize string `koanf:"documentContentMaxSize"`
+	MaxPaginationPages     int    `koanf:"maxPaginationPages"`
 }
 
 type SandboxConfig struct {
@@ -123,6 +134,15 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Sandbox.Runtime == "" {
 		cfg.Sandbox.Runtime = defaultSandboxRuntime
+	}
+	if cfg.GoogleDocs.ListenAddr == "" {
+		cfg.GoogleDocs.ListenAddr = ":8082"
+	}
+	if cfg.GoogleDocs.DocumentContentMaxSize == "" {
+		cfg.GoogleDocs.DocumentContentMaxSize = "100KB"
+	}
+	if cfg.GoogleDocs.MaxPaginationPages == 0 {
+		cfg.GoogleDocs.MaxPaginationPages = 100
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -184,6 +204,17 @@ func (c *Config) validate() error {
 		}
 		if c.GitHub.WebhookSecret == "" {
 			return fmt.Errorf("github.webhookSecret is required when github is enabled")
+		}
+	}
+	if c.GoogleDocs.Enabled {
+		if c.GoogleDocs.ServiceAccountKeyPath == "" {
+			return fmt.Errorf("googledocs.serviceAccountKeyPath is required when googledocs is enabled")
+		}
+		if _, err := os.Stat(c.GoogleDocs.ServiceAccountKeyPath); err != nil {
+			return fmt.Errorf("googledocs.serviceAccountKeyPath: %w", err)
+		}
+		if c.GoogleDocs.WebhookURL == "" {
+			return fmt.Errorf("googledocs.webhookUrl is required when googledocs is enabled")
 		}
 	}
 	if c.Slack.Enabled {

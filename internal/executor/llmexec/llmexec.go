@@ -3,6 +3,7 @@ package llmexec
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/creydr/ai-coworker/internal/executor"
@@ -24,9 +25,24 @@ func New(provider llm.Provider) *Executor {
 func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*executor.Result, error) {
 	var messages []llm.Message
 
+	systemPrompt := "You are a helpful AI coworker. Assist with questions, discussions, and reviews related to software development. Be concise and helpful."
+
+	if execCtx.Event != nil && execCtx.Event.Metadata != nil {
+		if thread := execCtx.Event.Metadata["comment_thread"]; thread != "" {
+			systemPrompt += "\n\n=== YOUR TASK ===\n"
+			if quoted := execCtx.Event.Metadata["quoted_text"]; quoted != "" {
+				systemPrompt += "Comment on: " + strconv.Quote(quoted) + "\n"
+			}
+			systemPrompt += thread
+		}
+		if docCtx := execCtx.Event.Metadata["document_context"]; docCtx != "" {
+			systemPrompt += "\n" + docCtx
+		}
+	}
+
 	messages = append(messages, llm.Message{
 		Role:    domain.RoleSystem,
-		Content: "You are a helpful AI coworker. Assist with questions, discussions, and reviews related to software development. Be concise and helpful.",
+		Content: systemPrompt,
 	})
 
 	for _, msg := range execCtx.Messages {

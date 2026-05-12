@@ -12,7 +12,7 @@ flowchart TD
     E -->|"question / discussion"| G["LLM Direct\n(Q&A)"]
 ```
 
-- **Channel adapters** receive events from external channels and normalize them into a common `IncomingEvent` format. The `adapter.Adapter` interface is pluggable — currently ships with GitHub (App webhooks) and Slack (Socket Mode).
+- **Channel adapters** receive events from external channels and normalize them into a common `IncomingEvent` format. The `adapter.Adapter` interface is pluggable — currently ships with GitHub (App webhooks), Slack (Socket Mode), and Google Docs (Drive push notifications + Comments API).
 - **Event router** maps events to conversation threads stored in PostgreSQL and enqueues tasks. Processes events in batches.
 - **Worker pool** runs configurable goroutines that claim pending tasks from the database. Review tasks are batched — sibling review comments from the same PR are absorbed and merged into a single sandbox execution.
 - **Intent classifier** uses the LLM to categorize each task as a code task, review, info lookup, question, or discussion.
@@ -29,6 +29,7 @@ cmd/ai-coworker/          Entry point
 internal/
   adapter/                Channel adapter interface
     github/               GitHub App webhook adapter (ref.go for typed helpers)
+    googledocs/           Google Docs adapter (Drive push + Comments API)
     slack/                Slack Socket Mode adapter (ref.go for typed helpers)
   config/                 Configuration loading (koanf)
   domain/                 Core types (Event, Thread, Task, Message)
@@ -109,6 +110,17 @@ make run
 ```
 
 The Slack adapter uses Socket Mode (outbound WebSocket), so no public URL is needed.
+
+### With Google Docs Adapter
+
+```sh
+AI_COWORKER__LLM__API_KEY=sk-ant-... \
+AI_COWORKER__GOOGLEDOCS__ENABLED=true \
+AI_COWORKER__GOOGLEDOCS__SERVICE_ACCOUNT_KEY_PATH=/path/to/key.json \
+make run
+```
+
+The Google Docs adapter starts an HTTP server on port **8082** listening for Drive push notifications. You need a [Google service account](README.md#google-docs-setup) and a webhook proxy (e.g. smee.io or ngrok) to receive push notifications locally.
 
 ### LLM Providers
 

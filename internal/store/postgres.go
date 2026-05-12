@@ -29,12 +29,16 @@ var migration002SQL string
 //go:embed migrations/003_channel_ref_refactor.sql
 var migration003SQL string
 
+//go:embed migrations/004_adapter_state.sql
+var migration004SQL string
+
 // migrations is the ordered list of all schema migrations. New migrations
 // must be appended with the next sequential version number.
 var migrations = []migration{
 	{version: 1, sql: migration001SQL},
 	{version: 2, sql: migration002SQL},
 	{version: 3, sql: migration003SQL},
+	{version: 4, sql: migration004SQL},
 }
 
 // scannable is satisfied by both pgx.Row and pgx.Rows.
@@ -378,6 +382,34 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, t *domain.Task) error {
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("task %s: %w", t.ID, ErrNotFound)
+	}
+	return nil
+}
+
+// ---------- adapter state ----------
+
+func (s *PostgresStore) GetAdapterState(ctx context.Context, adapter, key string) (string, error) {
+	var value string
+	err := s.pool.QueryRow(ctx,
+		`SELECT value FROM adapter_state WHERE adapter = $1 AND key = $2`,
+		adapter, key).Scan(&value)
+	if err == pgx.ErrNoRows {
+		return "", fmt.Errorf("adapter state %s/%s: %w", adapter, key, ErrNotFound)
+	}
+	if err != nil {
+		return "", fmt.Errorf("getting adapter state: %w", err)
+	}
+	return value, nil
+}
+
+func (s *PostgresStore) SetAdapterState(ctx context.Context, adapter, key, value string) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO adapter_state (adapter, key, value)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (adapter, key) DO UPDATE SET value = EXCLUDED.value`,
+		adapter, key, value)
+	if err != nil {
+		return fmt.Errorf("setting adapter state: %w", err)
 	}
 	return nil
 }
