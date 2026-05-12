@@ -18,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -305,16 +306,30 @@ func computeSignature(secret, payload []byte) string {
 }
 
 func resetDatabase(databaseURL string) error {
-	db, err := sql.Open("pgx", databaseURL)
+	u, err := url.Parse(databaseURL)
 	if err != nil {
-		return fmt.Errorf("connecting to database: %w", err)
+		return fmt.Errorf("parsing database URL: %w", err)
 	}
-	defer db.Close()
+	dbName := strings.TrimPrefix(u.Path, "/")
+	if dbName == "" {
+		return fmt.Errorf("no database name in URL")
+	}
 
-	for _, table := range []string{"tasks", "messages", "threads", "adapter_state"} {
-		if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-			// Table may not exist yet (first run); ignore.
-		}
+	// Connect to the default "postgres" database to drop/create the target.
+	u.Path = "/postgres"
+	adminDB, err := sql.Open("pgx", u.String())
+	if err != nil {
+		return fmt.Errorf("connecting to admin database: %w", err)
+	}
+	defer adminDB.Close()
+
+	// Terminate existing connections before dropping.
+	_, _ = adminDB.Exec("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()", dbName)
+	if _, err := adminDB.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName)); err != nil {
+		return fmt.Errorf("dropping database: %w", err)
+	}
+	if _, err := adminDB.Exec(fmt.Sprintf("CREATE DATABASE %s", dbName)); err != nil {
+		return fmt.Errorf("creating database: %w", err)
 	}
 	return nil
 }
