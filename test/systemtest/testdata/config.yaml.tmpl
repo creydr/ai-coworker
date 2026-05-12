@@ -10,7 +10,8 @@ llm:
 github:
   enabled: true
   appId: 12345
-  privateKey: "{{.PrivateKey}}"
+  privateKey: |
+{{.PrivateKey}}
   webhookSecret: "{{.WebhookSecret}}"
   botUsername: "test-bot"
   allowedUsers: ["*"]

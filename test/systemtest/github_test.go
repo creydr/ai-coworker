@@ -10,6 +10,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -19,10 +20,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"testing"
 	"text/template"
 	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const (
@@ -51,6 +55,10 @@ func TestMain(m *testing.M) {
 		ollamaURL = "http://localhost:11434/v1"
 	}
 
+	if err := resetDatabase(databaseURL); err != nil {
+		log.Fatalf("resetting database: %v", err)
+	}
+
 	pemKey, err := generateRSAKey()
 	if err != nil {
 		log.Fatalf("generating RSA key: %v", err)
@@ -62,7 +70,7 @@ func TestMain(m *testing.M) {
 	configPath, err := renderConfig(configParams{
 		DatabaseURL:   databaseURL,
 		OllamaURL:     ollamaURL,
-		PrivateKey:    string(pemKey),
+		PrivateKey:    indentPEM(string(pemKey), "    "),
 		WebhookSecret: webhookSecret,
 		FakeGitHubURL: fg.url(),
 	})
@@ -294,6 +302,29 @@ func computeSignature(secret, payload []byte) string {
 	mac := hmac.New(sha256.New, secret)
 	mac.Write(payload)
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+func resetDatabase(databaseURL string) error {
+	db, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		return fmt.Errorf("connecting to database: %w", err)
+	}
+	defer db.Close()
+
+	for _, table := range []string{"tasks", "messages", "threads", "adapter_state"} {
+		if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+			// Table may not exist yet (first run); ignore.
+		}
+	}
+	return nil
+}
+
+func indentPEM(pem, indent string) string {
+	var lines []string
+	for _, line := range strings.Split(strings.TrimRight(pem, "\n"), "\n") {
+		lines = append(lines, indent+line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func newFakeGitHubForMain() *fakeGitHub {
