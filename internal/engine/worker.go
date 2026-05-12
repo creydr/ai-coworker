@@ -33,13 +33,13 @@ type AdapterLookup interface {
 
 // WorkerPool manages a pool of goroutines that claim and process tasks.
 type WorkerPool struct {
-	store      store.Store
-	adapters   AdapterLookup
-	classifier *IntentClassifier
-	codeExec   executor.Executor
-	llmExec    executor.Executor
-	numWorkers int
-	wg         sync.WaitGroup
+	store       store.Store
+	adapters    AdapterLookup
+	classifier  *IntentClassifier
+	executors   map[domain.Intent]executor.Executor
+	defaultExec executor.Executor
+	numWorkers  int
+	wg          sync.WaitGroup
 }
 
 // NewWorkerPool creates a new WorkerPool with the given dependencies.
@@ -55,9 +55,13 @@ func NewWorkerPool(
 		store:      s,
 		adapters:   adapters,
 		classifier: classifier,
-		codeExec:   codeExec,
-		llmExec:    llmExec,
-		numWorkers: numWorkers,
+		executors: map[domain.Intent]executor.Executor{
+			domain.IntentCodeTask:   codeExec,
+			domain.IntentReview:     codeExec,
+			domain.IntentInfoLookup: codeExec,
+		},
+		defaultExec: llmExec,
+		numWorkers:  numWorkers,
 	}
 }
 
@@ -143,13 +147,9 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 		absorbedTasks = wp.absorbReviewTasks(ctx, workerID, task)
 	}
 
-	// Select the executor based on intent.
-	var exec executor.Executor
-	switch intent {
-	case domain.IntentCodeTask, domain.IntentReview, domain.IntentInfoLookup:
-		exec = wp.codeExec
-	default:
-		exec = wp.llmExec
+	exec, ok := wp.executors[intent]
+	if !ok {
+		exec = wp.defaultExec
 	}
 
 	// Build executor context — use merged input if we absorbed tasks.
