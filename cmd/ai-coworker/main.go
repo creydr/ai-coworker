@@ -105,6 +105,7 @@ func main() {
 			ListenAddr:             cfg.GoogleDocs.ListenAddr,
 			WebhookURL:             cfg.GoogleDocs.WebhookURL,
 			DocumentContentMaxSize: cfg.GoogleDocs.DocumentContentMaxSize,
+			MaxPaginationPages:     cfg.GoogleDocs.MaxPaginationPages,
 			Store:                  db,
 		})
 		if err != nil {

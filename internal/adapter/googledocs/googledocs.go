@@ -31,25 +31,27 @@ type Config struct {
 	ListenAddr             string
 	WebhookURL             string
 	DocumentContentMaxSize string
+	MaxPaginationPages     int
 	Store                  store.Store
 }
 
 type Adapter struct {
-	driveService   *drive.Service
-	botEmail       string
-	store          store.Store
-	handler        adapter.EventHandler
-	listenAddr     string
-	webhookURL     string
-	server         *http.Server
-	contentMaxSize int64
-	channelToken   string
-	ctx            context.Context
-	mu             sync.Mutex
-	docLocks       sync.Map
-	pageToken      string
-	channelID      string
-	resourceID     string
+	driveService       *drive.Service
+	botEmail           string
+	store              store.Store
+	handler            adapter.EventHandler
+	listenAddr         string
+	webhookURL         string
+	server             *http.Server
+	contentMaxSize     int64
+	maxPaginationPages int
+	channelToken       string
+	ctx                context.Context
+	mu                 sync.Mutex
+	docLocks           sync.Map
+	pageToken          string
+	channelID          string
+	resourceID         string
 }
 
 func New(cfg Config) (*Adapter, error) {
@@ -70,13 +72,14 @@ func New(cfg Config) (*Adapter, error) {
 	}
 
 	return &Adapter{
-		driveService:   driveService,
-		botEmail:       email,
-		store:          cfg.Store,
-		listenAddr:     cfg.ListenAddr,
-		webhookURL:     cfg.WebhookURL,
-		contentMaxSize: maxSize,
-		channelToken:   uuid.New().String(),
+		driveService:       driveService,
+		botEmail:           email,
+		store:              cfg.Store,
+		listenAddr:         cfg.ListenAddr,
+		webhookURL:         cfg.WebhookURL,
+		contentMaxSize:     maxSize,
+		maxPaginationPages: cfg.MaxPaginationPages,
+		channelToken:       uuid.New().String(),
 	}, nil
 }
 
@@ -224,7 +227,7 @@ func (a *Adapter) processChanges(ctx context.Context) error {
 
 	seen := map[string]bool{}
 	var docIDs []string
-	for {
+	for page := 0; page < a.maxPaginationPages; page++ {
 		changeList, err := a.driveService.Changes.List(token).
 			Fields("nextPageToken", "newStartPageToken", "changes(fileId, file(mimeType))").
 			Context(ctx).Do()
@@ -282,7 +285,7 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 
 	var allModifiedComments []*drive.Comment
 	pageToken := ""
-	for {
+	for page := 0; page < a.maxPaginationPages; page++ {
 		commentsCall := a.driveService.Comments.List(fileID).
 			Fields("nextPageToken", "comments(id, content, resolved, author(emailAddress, displayName), replies(content, author(me, emailAddress, displayName)), quotedFileContent(value), createdTime, modifiedTime, htmlContent)").
 			PageSize(100).
@@ -455,7 +458,7 @@ func (a *Adapter) fetchDocumentText(ctx context.Context, fileID string) (string,
 func (a *Adapter) fetchAllComments(ctx context.Context, fileID string) ([]*drive.Comment, error) {
 	var all []*drive.Comment
 	pageToken := ""
-	for {
+	for page := 0; page < a.maxPaginationPages; page++ {
 		call := a.driveService.Comments.List(fileID).
 			Fields("nextPageToken", "comments(id, content, resolved, author(displayName), replies(content, author(displayName)), quotedFileContent(value))").
 			PageSize(100).

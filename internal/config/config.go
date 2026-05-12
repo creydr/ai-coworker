@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -81,6 +82,7 @@ type GoogleDocsConfig struct {
 	ListenAddr             string `koanf:"listenAddr"`
 	WebhookURL             string `koanf:"webhookUrl"`
 	DocumentContentMaxSize string `koanf:"documentContentMaxSize"`
+	MaxPaginationPages     int    `koanf:"maxPaginationPages"`
 }
 
 type SandboxConfig struct {
@@ -138,6 +140,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.GoogleDocs.DocumentContentMaxSize == "" {
 		cfg.GoogleDocs.DocumentContentMaxSize = "100KB"
+	}
+	if cfg.GoogleDocs.MaxPaginationPages == 0 {
+		cfg.GoogleDocs.MaxPaginationPages = 100
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -204,6 +209,9 @@ func (c *Config) validate() error {
 	if c.GoogleDocs.Enabled {
 		if c.GoogleDocs.ServiceAccountKeyPath == "" {
 			return fmt.Errorf("googledocs.serviceAccountKeyPath is required when googledocs is enabled")
+		}
+		if _, err := os.Stat(c.GoogleDocs.ServiceAccountKeyPath); err != nil {
+			return fmt.Errorf("googledocs.serviceAccountKeyPath: %w", err)
 		}
 		if c.GoogleDocs.WebhookURL == "" {
 			return fmt.Errorf("googledocs.webhookUrl is required when googledocs is enabled")
