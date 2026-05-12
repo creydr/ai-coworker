@@ -54,7 +54,7 @@ type Adapter struct {
 
 func New(cfg Config) (*Adapter, error) {
 	ctx := context.Background()
-	driveService, err := drive.NewService(ctx, option.WithCredentialsFile(cfg.ServiceAccountKeyPath))
+	driveService, err := drive.NewService(ctx, option.WithAuthCredentialsFile(option.ServiceAccount, cfg.ServiceAccountKeyPath))
 	if err != nil {
 		return nil, fmt.Errorf("creating drive service: %w", err)
 	}
@@ -191,7 +191,7 @@ func (a *Adapter) stopWatch() {
 	}
 }
 
-func (a *Adapter) handleNotification(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func (a *Adapter) handleNotification(_ context.Context, w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("X-Goog-Channel-Token")
 	if token != a.channelToken {
 		http.Error(w, "invalid channel token", http.StatusForbidden)
@@ -645,7 +645,7 @@ func parseContentMaxSize(s string) (int64, error) {
 		return 0, fmt.Errorf("empty size value")
 	}
 
-	multiplier := int64(1)
+	var multiplier int64
 	switch {
 	case strings.HasSuffix(s, "MB"):
 		multiplier = 1024 * 1024
