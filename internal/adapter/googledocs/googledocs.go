@@ -186,30 +186,45 @@ func (a *Adapter) processChanges(ctx context.Context) error {
 		a.mu.Unlock()
 		return nil
 	}
-
-	changeList, err := a.driveService.Changes.List(a.pageToken).
-		Fields("nextPageToken", "newStartPageToken", "changes(fileId, file(mimeType))").
-		Context(ctx).Do()
-	if err != nil {
-		a.mu.Unlock()
-		return fmt.Errorf("listing drive changes: %w", err)
-	}
-
-	if changeList.NewStartPageToken != "" {
-		a.pageToken = changeList.NewStartPageToken
-	} else if changeList.NextPageToken != "" {
-		a.pageToken = changeList.NextPageToken
-	}
+	token := a.pageToken
 	a.mu.Unlock()
 
-	for _, change := range changeList.Changes {
-		if change.File == nil || change.File.MimeType != "application/vnd.google-apps.document" {
+	var docIDs []string
+	for {
+		changeList, err := a.driveService.Changes.List(token).
+			Fields("nextPageToken", "newStartPageToken", "changes(fileId, file(mimeType))").
+			Context(ctx).Do()
+		if err != nil {
+			return fmt.Errorf("listing drive changes: %w", err)
+		}
+
+		for _, change := range changeList.Changes {
+			if change.File == nil || change.File.MimeType != "application/vnd.google-apps.document" {
+				continue
+			}
+			docIDs = append(docIDs, change.FileId)
+		}
+
+		if changeList.NewStartPageToken != "" {
+			token = changeList.NewStartPageToken
+			break
+		}
+		if changeList.NextPageToken != "" {
+			token = changeList.NextPageToken
 			continue
 		}
-		docMu := a.docLock(change.FileId)
+		break
+	}
+
+	a.mu.Lock()
+	a.pageToken = token
+	a.mu.Unlock()
+
+	for _, fileID := range docIDs {
+		docMu := a.docLock(fileID)
 		docMu.Lock()
-		if err := a.checkDocumentComments(ctx, change.FileId); err != nil {
-			slog.Error("error checking document comments", "file_id", change.FileId, "error", err)
+		if err := a.checkDocumentComments(ctx, fileID); err != nil {
+			slog.Error("error checking document comments", "file_id", fileID, "error", err)
 		}
 		docMu.Unlock()
 	}
@@ -228,23 +243,37 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 		return fmt.Errorf("getting last seen timestamp: %w", err)
 	}
 
-	commentsCall := a.driveService.Comments.List(fileID).
-		Fields("comments(id, content, resolved, author(emailAddress, displayName), replies(content, author(me, emailAddress, displayName)), quotedFileContent(value), createdTime, modifiedTime, htmlContent)").
-		IncludeDeleted(false).
-		Context(ctx)
+	var allModifiedComments []*drive.Comment
+	pageToken := ""
+	for {
+		commentsCall := a.driveService.Comments.List(fileID).
+			Fields("nextPageToken", "comments(id, content, resolved, author(emailAddress, displayName), replies(content, author(me, emailAddress, displayName)), quotedFileContent(value), createdTime, modifiedTime, htmlContent)").
+			PageSize(100).
+			IncludeDeleted(false).
+			Context(ctx)
 
-	if lastSeen != "" {
-		commentsCall = commentsCall.StartModifiedTime(lastSeen)
-	}
+		if lastSeen != "" {
+			commentsCall = commentsCall.StartModifiedTime(lastSeen)
+		}
+		if pageToken != "" {
+			commentsCall = commentsCall.PageToken(pageToken)
+		}
 
-	commentList, err := commentsCall.Do()
-	if err != nil {
-		return fmt.Errorf("listing comments: %w", err)
+		commentList, err := commentsCall.Do()
+		if err != nil {
+			return fmt.Errorf("listing comments: %w", err)
+		}
+
+		allModifiedComments = append(allModifiedComments, commentList.Comments...)
+		if commentList.NextPageToken == "" {
+			break
+		}
+		pageToken = commentList.NextPageToken
 	}
 
 	var relevantComments []*drive.Comment
 	var latestModified string
-	for _, comment := range commentList.Comments {
+	for _, comment := range allModifiedComments {
 		if comment.Resolved || !a.isRelevantComment(comment) {
 			continue
 		}
@@ -387,14 +416,30 @@ func (a *Adapter) fetchDocumentText(ctx context.Context, fileID string) (string,
 }
 
 func (a *Adapter) fetchAllComments(ctx context.Context, fileID string) ([]*drive.Comment, error) {
-	commentList, err := a.driveService.Comments.List(fileID).
-		Fields("comments(id, content, resolved, author(displayName), replies(content, author(displayName)), quotedFileContent(value))").
-		IncludeDeleted(false).
-		Context(ctx).Do()
-	if err != nil {
-		return nil, fmt.Errorf("listing all comments: %w", err)
+	var all []*drive.Comment
+	pageToken := ""
+	for {
+		call := a.driveService.Comments.List(fileID).
+			Fields("nextPageToken", "comments(id, content, resolved, author(displayName), replies(content, author(displayName)), quotedFileContent(value))").
+			PageSize(100).
+			IncludeDeleted(false).
+			Context(ctx)
+		if pageToken != "" {
+			call = call.PageToken(pageToken)
+		}
+
+		commentList, err := call.Do()
+		if err != nil {
+			return nil, fmt.Errorf("listing all comments: %w", err)
+		}
+
+		all = append(all, commentList.Comments...)
+		if commentList.NextPageToken == "" {
+			break
+		}
+		pageToken = commentList.NextPageToken
 	}
-	return commentList.Comments, nil
+	return all, nil
 }
 
 type commentRef struct {
