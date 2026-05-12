@@ -98,9 +98,7 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 		Handler: mux,
 	}
 
-	if err := a.registerWatch(ctx); err != nil {
-		slog.Warn("failed to register drive watch, will retry on next notification", "error", err)
-	}
+	go a.watchRenewalLoop(ctx)
 
 	go func() {
 		<-ctx.Done()
@@ -117,16 +115,47 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 	return nil
 }
 
-func (a *Adapter) registerWatch(ctx context.Context) error {
+func (a *Adapter) watchRenewalLoop(ctx context.Context) {
+	for {
+		expiration, err := a.registerWatch(ctx)
+		if err != nil {
+			slog.Warn("failed to register drive watch, retrying in 1 minute", "error", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Minute):
+				continue
+			}
+		}
+
+		renewAt := time.Until(expiration) - 5*time.Minute
+		if renewAt < time.Minute {
+			renewAt = time.Minute
+		}
+		slog.Info("drive watch registered, will renew", "renew_in", renewAt.Round(time.Second))
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(renewAt):
+			a.stopWatch()
+		}
+	}
+}
+
+func (a *Adapter) registerWatch(ctx context.Context) (time.Time, error) {
 	if a.webhookURL == "" {
-		return fmt.Errorf("webhookUrl is required for Drive push notifications")
+		return time.Time{}, fmt.Errorf("webhookUrl is required for Drive push notifications")
 	}
 
 	startToken, err := a.driveService.Changes.GetStartPageToken().Context(ctx).Do()
 	if err != nil {
-		return fmt.Errorf("getting start page token: %w", err)
+		return time.Time{}, fmt.Errorf("getting start page token: %w", err)
 	}
+
+	a.mu.Lock()
 	a.pageToken = startToken.StartPageToken
+	a.mu.Unlock()
 
 	channelID := uuid.New().String()
 
@@ -137,14 +166,15 @@ func (a *Adapter) registerWatch(ctx context.Context) error {
 		Token:   a.channelToken,
 	}).Context(ctx).Do()
 	if err != nil {
-		return fmt.Errorf("registering drive watch: %w", err)
+		return time.Time{}, fmt.Errorf("registering drive watch: %w", err)
 	}
 
 	a.channelID = channel.Id
 	a.resourceID = channel.ResourceId
-	slog.Info("registered drive push notifications", "channel_id", a.channelID, "expiration", channel.Expiration)
+	expiration := time.UnixMilli(channel.Expiration)
+	slog.Info("registered drive push notifications", "channel_id", a.channelID, "expiration", expiration)
 
-	return nil
+	return expiration, nil
 }
 
 func (a *Adapter) stopWatch() {
