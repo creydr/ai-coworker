@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -156,7 +157,7 @@ func (s *PostgresStore) GetThread(ctx context.Context, id string) (*domain.Threa
 	row := s.pool.QueryRow(ctx,
 		`SELECT `+threadColumns+` FROM threads WHERE id = $1`, id)
 	t, err := scanThread(row)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("thread %s: %w", id, ErrNotFound)
 	}
 	return t, err
@@ -167,7 +168,7 @@ func (s *PostgresStore) GetThreadByChannelRef(ctx context.Context, channel, thre
 		`SELECT `+threadColumns+` FROM threads WHERE channel = $1 AND thread_key = $2`,
 		channel, threadKey)
 	t, err := scanThread(row)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("thread %s/%s: %w", channel, threadKey, ErrNotFound)
 	}
 	return t, err
@@ -325,7 +326,7 @@ func (s *PostgresStore) ClaimNextTask(ctx context.Context, workerID string) (*do
 		workerID, time.Now().UTC())
 
 	t, err := scanTask(row)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -393,7 +394,7 @@ func (s *PostgresStore) GetAdapterState(ctx context.Context, adapter, key string
 	err := s.pool.QueryRow(ctx,
 		`SELECT value FROM adapter_state WHERE adapter = $1 AND key = $2`,
 		adapter, key).Scan(&value)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", fmt.Errorf("adapter state %s/%s: %w", adapter, key, ErrNotFound)
 	}
 	if err != nil {
