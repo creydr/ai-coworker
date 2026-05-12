@@ -163,7 +163,7 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 	result, err := exec.Execute(ctx, execCtx)
 	if err != nil {
 		wp.failTask(ctx, workerID, task, fmt.Errorf("executing task: %w", err))
-		wp.sendResponse(ctx, thread.ChannelRef, fmt.Sprintf("Sorry, I encountered an error while processing your request: %v", err))
+		wp.sendResponse(ctx, thread.ChannelRef, "Sorry, I encountered an error while processing your request. Please try again later.")
 		for _, absorbed := range absorbedTasks {
 			wp.failTask(ctx, workerID, absorbed, fmt.Errorf("batch execution failed: %w", err))
 		}
