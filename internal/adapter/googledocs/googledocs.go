@@ -44,6 +44,7 @@ type Adapter struct {
 	server         *http.Server
 	contentMaxSize int64
 	channelToken   string
+	ctx            context.Context
 	mu             sync.Mutex
 	docLocks       sync.Map
 	pageToken      string
@@ -85,6 +86,7 @@ func (a *Adapter) Name() string {
 
 func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error {
 	a.handler = handler
+	a.ctx = ctx
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhooks/googledocs", func(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +174,7 @@ func (a *Adapter) handleNotification(ctx context.Context, w http.ResponseWriter,
 	}
 
 	go func() {
-		if err := a.processChanges(context.Background()); err != nil {
+		if err := a.processChanges(a.ctx); err != nil {
 			slog.Error("error processing drive changes", "error", err)
 		}
 	}()
