@@ -2,6 +2,7 @@ package googledocs
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -196,7 +197,7 @@ func (a *Adapter) stopWatch() {
 
 func (a *Adapter) handleNotification(_ context.Context, w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("X-Goog-Channel-Token")
-	if token != a.channelToken {
+	if subtle.ConstantTimeCompare([]byte(token), []byte(a.channelToken)) != 1 {
 		http.Error(w, "invalid channel token", http.StatusForbidden)
 		return
 	}
