@@ -117,7 +117,7 @@ func TestExecute_DocumentContext(t *testing.T) {
 		Event: &domain.IncomingEvent{
 			Metadata: map[string]string{
 				"comment_thread":   "[Alice]: Please fix the typo\n",
-				"quoted_text":      "teh quick brown fox",
+				"quoted_text":      "quick brwon fox",
 				"document_context": "=== DOCUMENT ===\nThe quick brown fox jumps over the lazy dog.",
 			},
 		},
@@ -134,7 +134,7 @@ func TestExecute_DocumentContext(t *testing.T) {
 
 	checks := []string{
 		"YOUR TASK",
-		"teh quick brown fox",
+		"quick brwon fox",
 		"[Alice]: Please fix the typo",
 		"=== DOCUMENT ===",
 	}
