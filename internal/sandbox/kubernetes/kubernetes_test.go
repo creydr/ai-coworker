@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -51,7 +52,10 @@ func TestBuildResources(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := buildResources(tt.cpu, tt.mem)
+			result, err := buildResources(tt.cpu, tt.mem)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if tt.wantNone {
 				if result.Limits != nil || result.Requests != nil {
 					t.Error("expected empty ResourceRequirements")
@@ -80,6 +84,31 @@ func TestBuildResources(t *testing.T) {
 	}
 }
 
+func TestBuildResources_InvalidInput(t *testing.T) {
+	tests := []struct {
+		name    string
+		cpu     string
+		mem     string
+		wantMsg string
+	}{
+		{"invalid cpu", "not-a-quantity", "", "invalid CPU limit"},
+		{"invalid memory", "", "not-a-quantity", "invalid memory limit"},
+		{"invalid cpu with valid memory", "bad", "512Mi", "invalid CPU limit"},
+		{"valid cpu with invalid memory", "500m", "bad", "invalid memory limit"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := buildResources(tt.cpu, tt.mem)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Errorf("error %q should contain %q", err.Error(), tt.wantMsg)
+			}
+		})
+	}
+}
+
 func TestBuildConfigMap(t *testing.T) {
 	cm := buildConfigMap("sandbox-abc123", "test-ns", "do something")
 
@@ -102,7 +131,10 @@ func TestBuildJob(t *testing.T) {
 		Image:   "quay.io/test/sandbox:latest",
 		EnvVars: map[string]string{"KEY": "val"},
 	}
-	resources := buildResources("1", "1Gi")
+	resources, err := buildResources("1", "1Gi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	job := buildJob("sandbox-abc123", "test-ns", "my-sa", req, resources)
 
 	if job.Name != "sandbox-abc123" {
@@ -147,7 +179,10 @@ func TestBuildJobWithSkillImages(t *testing.T) {
 		EnvVars:     map[string]string{"KEY": "val"},
 		SkillImages: []string{"quay.io/org/skills-a:latest", "ghcr.io/org/skills-b:v1"},
 	}
-	resources := buildResources("1", "1Gi")
+	resources, err := buildResources("1", "1Gi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	job := buildJob("sandbox-abc123", "test-ns", "my-sa", req, resources)
 
 	pod := job.Spec.Template.Spec
@@ -184,7 +219,10 @@ func TestBuildJobWithoutSkillImages(t *testing.T) {
 		Image:   "quay.io/test/sandbox:latest",
 		EnvVars: map[string]string{"KEY": "val"},
 	}
-	resources := buildResources("1", "1Gi")
+	resources, err := buildResources("1", "1Gi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	job := buildJob("sandbox-abc123", "test-ns", "my-sa", req, resources)
 
 	pod := job.Spec.Template.Spec

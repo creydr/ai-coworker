@@ -64,7 +64,10 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 		return nil, fmt.Errorf("failed to create prompt configmap: %w", err)
 	}
 
-	resources := buildResources(req.CPULimit, req.MemLimit)
+	resources, err := buildResources(req.CPULimit, req.MemLimit)
+	if err != nil {
+		return nil, err
+	}
 	job := buildJob(name, r.namespace, r.serviceAccount, req, resources)
 	if _, err := r.clientset.BatchV1().Jobs(r.namespace).Create(ctx, job, metav1.CreateOptions{}); err != nil {
 		r.cleanup(name)
@@ -250,19 +253,27 @@ func buildEnvVars(envVars map[string]string) []corev1.EnvVar {
 	return vars
 }
 
-func buildResources(cpuLimit, memLimit string) corev1.ResourceRequirements {
+func buildResources(cpuLimit, memLimit string) (corev1.ResourceRequirements, error) {
 	limits := corev1.ResourceList{}
 	if cpuLimit != "" {
-		limits[corev1.ResourceCPU] = resource.MustParse(cpuLimit)
+		q, err := resource.ParseQuantity(cpuLimit)
+		if err != nil {
+			return corev1.ResourceRequirements{}, fmt.Errorf("invalid CPU limit %q: %w", cpuLimit, err)
+		}
+		limits[corev1.ResourceCPU] = q
 	}
 	if memLimit != "" {
-		limits[corev1.ResourceMemory] = resource.MustParse(memLimit)
+		q, err := resource.ParseQuantity(memLimit)
+		if err != nil {
+			return corev1.ResourceRequirements{}, fmt.Errorf("invalid memory limit %q: %w", memLimit, err)
+		}
+		limits[corev1.ResourceMemory] = q
 	}
 	if len(limits) == 0 {
-		return corev1.ResourceRequirements{}
+		return corev1.ResourceRequirements{}, nil
 	}
 	return corev1.ResourceRequirements{
 		Limits:   limits,
 		Requests: limits,
-	}
+	}, nil
 }
