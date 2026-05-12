@@ -25,6 +25,13 @@ import (
 	"github.com/creydr/ai-coworker/internal/store"
 )
 
+// AdapterStateStore is the subset of the store that the Google Docs adapter
+// needs for tracking per-document change cursors.
+type AdapterStateStore interface {
+	GetAdapterState(ctx context.Context, adapter, key string) (string, error)
+	SetAdapterState(ctx context.Context, adapter, key, value string) error
+}
+
 var _ adapter.Adapter = (*Adapter)(nil)
 
 type Config struct {
@@ -33,13 +40,13 @@ type Config struct {
 	WebhookURL             string
 	DocumentContentMaxSize string
 	MaxPaginationPages     int
-	Store                  store.Store
+	Store                  AdapterStateStore
 }
 
 type Adapter struct {
 	driveService       *drive.Service
 	botEmail           string
-	store              store.Store
+	store              AdapterStateStore
 	handler            adapter.EventHandler
 	listenAddr         string
 	webhookURL         string
