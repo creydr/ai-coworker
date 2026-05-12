@@ -219,8 +219,17 @@ func buildPrompt(execCtx *executor.Context) string {
 			sb.WriteString("\n\n")
 		}
 
+		if thread := execCtx.Event.Metadata["comment_thread"]; thread != "" {
+			sb.WriteString("--- Comment thread you are responding to ---\n")
+			if quoted := execCtx.Event.Metadata["quoted_text"]; quoted != "" {
+				fmt.Fprintf(&sb, "Highlighted text: %q\n", quoted)
+			}
+			sb.WriteString(thread)
+			sb.WriteString("\n")
+		}
+
 		if docCtx := execCtx.Event.Metadata["document_context"]; docCtx != "" {
-			sb.WriteString("Document content:\n")
+			sb.WriteString("--- Full document (for background context) ---\n")
 			sb.WriteString(docCtx)
 			sb.WriteString("\n\n")
 		}

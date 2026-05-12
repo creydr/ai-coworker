@@ -228,7 +228,7 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 	}
 
 	commentsCall := a.driveService.Comments.List(fileID).
-		Fields("comments(id, content, resolved, author(emailAddress), replies(content, author(me, emailAddress)), anchor, createdTime, modifiedTime, htmlContent)").
+		Fields("comments(id, content, resolved, author(emailAddress, displayName), replies(content, author(me, emailAddress, displayName)), quotedFileContent(value), createdTime, modifiedTime, htmlContent)").
 		IncludeDeleted(false).
 		Context(ctx)
 
@@ -272,6 +272,11 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 			userID = comment.Author.EmailAddress
 		}
 
+		var quotedText string
+		if comment.QuotedFileContent != nil {
+			quotedText = comment.QuotedFileContent.Value
+		}
+
 		ref := NewRef(fileID, comment.Id)
 		event := domain.IncomingEvent{
 			ChannelRef: ref,
@@ -282,6 +287,8 @@ func (a *Adapter) checkDocumentComments(ctx context.Context, fileID string) erro
 				"document_id":      fileID,
 				"comment_id":       comment.Id,
 				"document_context": docContext,
+				"quoted_text":      quotedText,
+				"comment_thread":   formatCommentThread(comment),
 			},
 		}
 		events = append(events, event)
@@ -332,6 +339,23 @@ func isActionItemAssignedTo(comment *drive.Comment, email string) bool {
 	}
 	return strings.Contains(comment.HtmlContent, email) &&
 		strings.Contains(comment.HtmlContent, "action_item")
+}
+
+func formatCommentThread(comment *drive.Comment) string {
+	var sb strings.Builder
+	authorName := "Unknown"
+	if comment.Author != nil && comment.Author.DisplayName != "" {
+		authorName = comment.Author.DisplayName
+	}
+	fmt.Fprintf(&sb, "[%s]: %s\n", authorName, comment.Content)
+	for _, r := range comment.Replies {
+		replyAuthor := "Unknown"
+		if r.Author != nil && r.Author.DisplayName != "" {
+			replyAuthor = r.Author.DisplayName
+		}
+		fmt.Fprintf(&sb, "  [%s]: %s\n", replyAuthor, r.Content)
+	}
+	return sb.String()
 }
 
 func extractContent(comment *drive.Comment) string {

@@ -27,8 +27,15 @@ func (e *Executor) Execute(ctx context.Context, execCtx *executor.Context) (*exe
 	systemPrompt := "You are a helpful AI coworker. Assist with questions, discussions, and reviews related to software development. Be concise and helpful."
 
 	if execCtx.Event != nil && execCtx.Event.Metadata != nil {
+		if thread := execCtx.Event.Metadata["comment_thread"]; thread != "" {
+			systemPrompt += "\n\n--- Comment thread you are responding to ---\n"
+			if quoted := execCtx.Event.Metadata["quoted_text"]; quoted != "" {
+				systemPrompt += "Highlighted text: \"" + quoted + "\"\n"
+			}
+			systemPrompt += thread
+		}
 		if docCtx := execCtx.Event.Metadata["document_context"]; docCtx != "" {
-			systemPrompt += "\n\nDocument content:\n" + docCtx
+			systemPrompt += "\n--- Full document (for background context) ---\n" + docCtx
 		}
 	}
 
