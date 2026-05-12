@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+
+	"github.com/docker/docker/api/types/container"
 )
 
 func TestBuildEnv(t *testing.T) {
@@ -123,6 +125,34 @@ func TestPreparePromptFile(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0644 {
 		t.Errorf("prompt file permissions = %o, want 0644", info.Mode().Perm())
+	}
+}
+
+func TestHostConfig_SecurityHardening(t *testing.T) {
+	resources, err := parseResources("2.0", "4Gi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	binds := []string{"/tmp/prompt.txt:/tmp/prompt.txt:ro"}
+	hc := &container.HostConfig{
+		Resources:   resources,
+		Binds:       binds,
+		CapDrop:     []string{"ALL"},
+		SecurityOpt: []string{"no-new-privileges"},
+	}
+
+	if len(hc.CapDrop) != 1 || hc.CapDrop[0] != "ALL" {
+		t.Errorf("CapDrop = %v, want [ALL]", hc.CapDrop)
+	}
+	if len(hc.SecurityOpt) != 1 || hc.SecurityOpt[0] != "no-new-privileges" {
+		t.Errorf("SecurityOpt = %v, want [no-new-privileges]", hc.SecurityOpt)
+	}
+	if hc.Resources.NanoCPUs != 2e9 {
+		t.Errorf("NanoCPUs = %d, want %d", hc.Resources.NanoCPUs, int64(2e9))
+	}
+	if len(hc.Binds) != 1 {
+		t.Errorf("Binds = %v, want 1 entry", hc.Binds)
 	}
 }
 
