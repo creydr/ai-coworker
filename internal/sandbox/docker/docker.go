@@ -195,8 +195,7 @@ func (r *Runtime) waitAndCollectLogs(ctx context.Context, containerID string) (*
 }
 
 // ensureImage pulls the given image so it is available locally, retrying on
-// transient errors up to 3 times with exponential backoff. If all pull
-// attempts fail but the image already exists locally, it is used as-is.
+// transient errors up to 3 times with exponential backoff.
 func (r *Runtime) ensureImage(ctx context.Context, img string) error {
 	var lastErr error
 	for attempt := range 3 {
@@ -216,11 +215,6 @@ func (r *Runtime) ensureImage(ctx context.Context, img string) error {
 		}
 		_, _ = io.Copy(io.Discard, pullReader)
 		_ = pullReader.Close()
-		return nil
-	}
-
-	if _, err := r.client.ImageInspect(ctx, img); err == nil {
-		slog.Info("using locally available image", "image", img)
 		return nil
 	}
 	return fmt.Errorf("failed to pull image %s: %w", img, lastErr)

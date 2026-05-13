@@ -37,7 +37,6 @@ const (
 	testRepo      = "test-repo"
 	adapterAddr   = "127.0.0.1:18080"
 	pollTimeout   = 10 * time.Minute
-	defaultModel  = "qwen3:1.7b"
 )
 
 var (
@@ -47,20 +46,10 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	databaseURL := os.Getenv("SYSTEMTEST_DATABASE_URL")
-	if databaseURL == "" {
-		log.Fatal("SYSTEMTEST_DATABASE_URL is required")
-	}
-
-	ollamaURL := os.Getenv("SYSTEMTEST_OLLAMA_URL")
-	if ollamaURL == "" {
-		ollamaURL = "http://localhost:11434/v1"
-	}
-
-	model := os.Getenv("SYSTEMTEST_MODEL")
-	if model == "" {
-		model = defaultModel
-	}
+	databaseURL := requireEnv("SYSTEMTEST_DATABASE_URL")
+	ollamaURL := requireEnv("SYSTEMTEST_OLLAMA_URL")
+	model := requireEnv("SYSTEMTEST_MODEL")
+	sandboxImage := requireEnv("SYSTEMTEST_SANDBOX_IMAGE")
 
 	if err := resetDatabase(databaseURL); err != nil {
 		log.Fatalf("resetting database: %v", err)
@@ -78,6 +67,7 @@ func TestMain(m *testing.M) {
 		DatabaseURL:   databaseURL,
 		OllamaURL:     ollamaURL,
 		Model:         model,
+		SandboxImage:  sandboxImage,
 		PrivateKey:    indentPEM(string(pemKey), "    "),
 		WebhookSecret: webhookSecret,
 		FakeGitHubURL: fg.url(),
@@ -191,6 +181,7 @@ type configParams struct {
 	DatabaseURL   string
 	OllamaURL     string
 	Model         string
+	SandboxImage  string
 	PrivateKey    string
 	WebhookSecret string
 	FakeGitHubURL string
@@ -388,4 +379,12 @@ func newFakeGitHubForMain() *fakeGitHub {
 
 	fg.server = httptest.NewServer(mux)
 	return fg
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s is required", key)
+	}
+	return v
 }

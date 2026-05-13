@@ -75,21 +75,6 @@ jobs:
   systemtest:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: ai_coworker
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: ai_coworker_systemtest
-        ports:
-          - 5433:5432
-        options: >-
-          --health-cmd "pg_isready -U ai_coworker"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v6
 
@@ -106,7 +91,4 @@ jobs:
           sleep 5
 
       - name: System Tests
-        env:
-          SYSTEMTEST_DATABASE_URL: postgres://ai_coworker:test@localhost:5433/ai_coworker_systemtest?sslmode=disable
-          SYSTEMTEST_OLLAMA_URL: http://localhost:11434/v1
         run: make test-systemtest
