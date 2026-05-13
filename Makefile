@@ -28,7 +28,7 @@ sandbox-image:
 dev-db:
 	docker compose up -d postgres
 
-SYSTEMTEST_MODEL ?= qwen2.5:0.5b
+SYSTEMTEST_MODEL ?= qwen3:1.7b
 
 systemtest-sandbox-image:
 	docker build -t ai-coworker-systemtest-sandbox:latest -f test/systemtest/sandbox/Dockerfile test/systemtest/sandbox/
@@ -36,7 +36,7 @@ systemtest-sandbox-image:
 test-systemtest: systemtest-sandbox-image
 	@echo "Ensuring Ollama model $(SYSTEMTEST_MODEL) is available..."
 	ollama pull $(SYSTEMTEST_MODEL)
-	go test -tags systemtest -timeout 300s -count=1 -v ./test/systemtest/...
+	SYSTEMTEST_MODEL=$(SYSTEMTEST_MODEL) go test -tags systemtest -timeout 1h -count=1 -v ./test/systemtest/...
 
 lint:
 	golangci-lint run ./...

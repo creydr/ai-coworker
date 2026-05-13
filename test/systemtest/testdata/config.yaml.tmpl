@@ -3,7 +3,7 @@ database:
 
 llm:
   provider: openai
-  model: qwen2.5:0.5b
+  model: "{{.Model}}"
   openai:
     baseUrl: "{{.OllamaURL}}"
 

@@ -36,7 +36,8 @@ const (
 	testOwner     = "test-org"
 	testRepo      = "test-repo"
 	adapterAddr   = "127.0.0.1:18080"
-	pollTimeout   = 120 * time.Second
+	pollTimeout   = 10 * time.Minute
+	defaultModel  = "qwen3:1.7b"
 )
 
 var (
@@ -56,6 +57,11 @@ func TestMain(m *testing.M) {
 		ollamaURL = "http://localhost:11434/v1"
 	}
 
+	model := os.Getenv("SYSTEMTEST_MODEL")
+	if model == "" {
+		model = defaultModel
+	}
+
 	if err := resetDatabase(databaseURL); err != nil {
 		log.Fatalf("resetting database: %v", err)
 	}
@@ -71,6 +77,7 @@ func TestMain(m *testing.M) {
 	configPath, err := renderConfig(configParams{
 		DatabaseURL:   databaseURL,
 		OllamaURL:     ollamaURL,
+		Model:         model,
 		PrivateKey:    indentPEM(string(pemKey), "    "),
 		WebhookSecret: webhookSecret,
 		FakeGitHubURL: fg.url(),
@@ -110,21 +117,53 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestGitHubIssueCommentLLMResponse(t *testing.T) {
-	issueNum := 1
-	commentID := int64(42)
-
-	payload := buildIssueCommentPayload(testOwner, testRepo, issueNum, commentID, fmt.Sprintf("@%s What is 2+2?", botUsername), "testuser", 99)
-	sendWebhook(t, "issue_comment", payload)
-
-	comment, ok := fakeGH.waitForIssueComment(testOwner, testRepo, issueNum, pollTimeout)
-	if !ok {
-		t.Fatal("timed out waiting for GitHub comment response")
+func TestGitHubIssueCommentResponse(t *testing.T) {
+	tests := []struct {
+		name        string
+		issueNum    int
+		commentID   int64
+		message     string
+		wantContain string
+		wantAbsent  string
+	}{
+		{
+			name:        "Discussion",
+			issueNum:    1,
+			commentID:   42,
+			message:     "Hello! How are you today?",
+			wantAbsent:  "Task completed successfully by system test sandbox",
+			wantContain: "",
+		},
+		{
+			name:        "Code task",
+			issueNum:    3,
+			commentID:   44,
+			message:     "Write a function called Add that returns the sum of two integers and commit it to a new branch",
+			wantContain: "Task completed successfully by system test sandbox",
+		},
 	}
-	if comment.Body == "" {
-		t.Fatal("expected non-empty response comment")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := buildIssueCommentPayload(testOwner, testRepo, tt.issueNum, tt.commentID, fmt.Sprintf("@%s %s", botUsername, tt.message), "testuser", 99)
+			sendWebhook(t, "issue_comment", payload)
+
+			comment, ok := fakeGH.waitForIssueComment(testOwner, testRepo, tt.issueNum, pollTimeout)
+			if !ok {
+				t.Fatal("timed out waiting for GitHub comment response")
+			}
+			if comment.Body == "" {
+				t.Fatal("expected non-empty response comment")
+			}
+			if tt.wantContain != "" && !strings.Contains(comment.Body, tt.wantContain) {
+				t.Errorf("response should contain %q, got: %s", tt.wantContain, comment.Body)
+			}
+			if tt.wantAbsent != "" && strings.Contains(comment.Body, tt.wantAbsent) {
+				t.Errorf("response should not contain %q, got: %s", tt.wantAbsent, comment.Body)
+			}
+			t.Logf("received response: %s", comment.Body)
+		})
 	}
-	t.Logf("received response: %s", comment.Body)
 }
 
 func TestGitHubIssueCommentAcknowledgement(t *testing.T) {
@@ -148,26 +187,10 @@ func TestGitHubIssueCommentAcknowledgement(t *testing.T) {
 	t.Fatal("timed out waiting for eyes reaction acknowledgement")
 }
 
-func TestGitHubCodeTaskSandboxExecution(t *testing.T) {
-	issueNum := 3
-	commentID := int64(44)
-
-	payload := buildIssueCommentPayload(testOwner, testRepo, issueNum, commentID, fmt.Sprintf("@%s Please fix the bug in main.go and create a PR", botUsername), "testuser", 99)
-	sendWebhook(t, "issue_comment", payload)
-
-	comment, ok := fakeGH.waitForIssueComment(testOwner, testRepo, issueNum, pollTimeout)
-	if !ok {
-		t.Fatal("timed out waiting for GitHub comment response")
-	}
-	if comment.Body == "" {
-		t.Fatal("expected non-empty response comment")
-	}
-	t.Logf("received response: %s", comment.Body)
-}
-
 type configParams struct {
 	DatabaseURL   string
 	OllamaURL     string
+	Model         string
 	PrivateKey    string
 	WebhookSecret string
 	FakeGitHubURL string
