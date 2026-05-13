@@ -84,7 +84,7 @@ func main() {
 	var githubAdapter *github.Adapter
 	if cfg.GitHub.Enabled {
 		var err error
-		githubAdapter, err = github.New(cfg.GitHub.AppID, []byte(cfg.GitHub.PrivateKey), cfg.GitHub.WebhookSecret, cfg.GitHub.BotUsername, cfg.GitHub.ListenAddr, cfg.GitHub.AllowedUsers)
+		githubAdapter, err = github.New(cfg.GitHub.AppID, []byte(cfg.GitHub.PrivateKey), cfg.GitHub.WebhookSecret, cfg.GitHub.BotUsername, cfg.GitHub.ListenAddr, cfg.GitHub.APIBaseURL, cfg.GitHub.AllowedUsers)
 		if err != nil {
 			slog.Error("failed to create github adapter", "error", err)
 			os.Exit(1)

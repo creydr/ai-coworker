@@ -74,6 +74,7 @@ type GitHubConfig struct {
 	BotUsername   string   `koanf:"botUsername"`
 	AllowedUsers  []string `koanf:"allowedUsers"`
 	ListenAddr    string   `koanf:"listenAddr"`
+	APIBaseURL    string   `koanf:"apiBaseUrl"`
 }
 
 type GoogleDocsConfig struct {

@@ -1,0 +1,25 @@
+database:
+  url: "{{.DatabaseURL}}"
+
+llm:
+  provider: openai
+  model: "{{.Model}}"
+  openai:
+    baseUrl: "{{.OllamaURL}}"
+
+github:
+  enabled: true
+  appId: 12345
+  privateKey: |
+{{.PrivateKey}}
+  webhookSecret: "{{.WebhookSecret}}"
+  botUsername: "test-bot"
+  allowedUsers: ["*"]
+  listenAddr: ":18080"
+  apiBaseUrl: "{{.FakeGitHubURL}}"
+
+sandbox:
+  runtime: docker
+  image: "{{.SandboxImage}}"
+
+workers: 1

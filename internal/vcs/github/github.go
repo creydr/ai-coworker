@@ -20,13 +20,14 @@ var _ vcs.Provider = (*Provider)(nil)
 // Provider implements vcs.Provider for GitHub repositories.
 type Provider struct {
 	appsTransport     *ghinstallation.AppsTransport
+	apiBaseURL        string
 	repoInstallations sync.Map
 	discoverGroup     singleflight.Group
 }
 
 // New creates a new GitHub VCS provider.
-func New(appsTransport *ghinstallation.AppsTransport) *Provider {
-	return &Provider{appsTransport: appsTransport}
+func New(appsTransport *ghinstallation.AppsTransport, apiBaseURL string) *Provider {
+	return &Provider{appsTransport: appsTransport, apiBaseURL: apiBaseURL}
 }
 
 func (p *Provider) Name() string { return "github" }
@@ -60,7 +61,7 @@ func (p *Provider) CreateTokenForRepo(ctx context.Context, fullRepo string) (str
 		return "", err
 	}
 
-	appClient := gh.NewClient(&http.Client{Transport: p.appsTransport})
+	appClient := p.newAppClient()
 	token, _, err := appClient.Apps.CreateInstallationToken(ctx, installationID, &gh.InstallationTokenOptions{
 		Repositories: []string{repoName},
 	})
@@ -106,7 +107,7 @@ func (p *Provider) discoverInstallation(ctx context.Context, fullRepo string) (i
 	if err != nil {
 		return 0, err
 	}
-	appClient := gh.NewClient(&http.Client{Transport: p.appsTransport})
+	appClient := p.newAppClient()
 	inst, _, err := appClient.Apps.FindRepositoryInstallation(ctx, owner, repo)
 	if err != nil {
 		return 0, fmt.Errorf("no GitHub App installation for %s: %w", fullRepo, err)
@@ -114,6 +115,15 @@ func (p *Provider) discoverInstallation(ctx context.Context, fullRepo string) (i
 	id := inst.GetID()
 	p.repoInstallations.Store(fullRepo, id)
 	return id, nil
+}
+
+func (p *Provider) newAppClient() *gh.Client {
+	client := gh.NewClient(&http.Client{Transport: p.appsTransport})
+	if p.apiBaseURL != "" {
+		baseURL, _ := url.Parse(strings.TrimRight(p.apiBaseURL, "/") + "/")
+		client.BaseURL = baseURL
+	}
+	return client
 }
 
 func SplitRepo(fullName string) (owner, repo string, err error) {
