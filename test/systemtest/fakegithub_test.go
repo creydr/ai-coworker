@@ -201,12 +201,20 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 }
 
 func (fg *fakeGitHub) waitForIssueComment(owner, repo string, issueNum int, timeout time.Duration) (issueComment, bool) {
+	return fg.waitForNthIssueComment(owner, repo, issueNum, 1, timeout)
+}
+
+func (fg *fakeGitHub) waitForNthIssueComment(owner, repo string, issueNum, n int, timeout time.Duration) (issueComment, bool) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		comments := fg.getIssueComments(owner, repo, issueNum)
+		count := 0
 		for _, c := range comments {
 			if strings.TrimSpace(c.Body) != "" {
-				return c, true
+				count++
+				if count == n {
+					return c, true
+				}
 			}
 		}
 		time.Sleep(500 * time.Millisecond)

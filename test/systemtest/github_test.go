@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -177,6 +178,55 @@ func TestGitHubIssueCommentAcknowledgement(t *testing.T) {
 	t.Fatal("timed out waiting for eyes reaction acknowledgement")
 }
 
+func TestGitHubPRReviewResponse(t *testing.T) {
+	prNum := 5
+	reviewID := int64(200)
+
+	payload := buildPullRequestReviewPayload(testOwner, testRepo, prNum, reviewID,
+		fmt.Sprintf("@%s Write a function called Multiply that returns the product of two integers and commit it to a new branch", botUsername),
+		"testuser", "commented", "feature-branch", 99)
+	sendWebhook(t, "pull_request_review", payload)
+
+	comment, ok := fakeGH.waitForIssueComment(testOwner, testRepo, prNum, pollTimeout)
+	if !ok {
+		t.Fatal("timed out waiting for PR review response")
+	}
+	if comment.Body == "" {
+		t.Fatal("expected non-empty response comment")
+	}
+	if !strings.Contains(comment.Body, "Task completed successfully by system test sandbox") {
+		t.Errorf("response should contain sandbox success message, got: %s", comment.Body)
+	}
+	t.Logf("received response: %s", comment.Body)
+}
+
+func TestGitHubConversationHistory(t *testing.T) {
+	issueNum := 10
+
+	payload := buildIssueCommentPayload(testOwner, testRepo, issueNum, 100,
+		fmt.Sprintf("@%s My name is SystemTestUser", botUsername), "testuser", 99)
+	sendWebhook(t, "issue_comment", payload)
+
+	first, ok := fakeGH.waitForIssueComment(testOwner, testRepo, issueNum, pollTimeout)
+	if !ok {
+		t.Fatal("timed out waiting for first response")
+	}
+	t.Logf("first response: %s", first.Body)
+
+	payload = buildIssueCommentPayload(testOwner, testRepo, issueNum, 101,
+		fmt.Sprintf("@%s What is my name?", botUsername), "testuser", 99)
+	sendWebhook(t, "issue_comment", payload)
+
+	second, ok := fakeGH.waitForNthIssueComment(testOwner, testRepo, issueNum, 2, pollTimeout)
+	if !ok {
+		t.Fatal("timed out waiting for second response")
+	}
+	if !strings.Contains(second.Body, "SystemTestUser") {
+		t.Errorf("second response should contain 'SystemTestUser' (proving conversation history), got: %s", second.Body)
+	}
+	t.Logf("second response: %s", second.Body)
+}
+
 type configParams struct {
 	DatabaseURL   string
 	OllamaURL     string
@@ -286,6 +336,34 @@ func buildIssueCommentPayload(owner, repo string, issueNum int, commentID int64,
 	return data
 }
 
+func buildPullRequestReviewPayload(owner, repo string, prNum int, reviewID int64, body, user, state, branch string, installationID int64) []byte {
+	payload := map[string]interface{}{
+		"action": "submitted",
+		"review": map[string]interface{}{
+			"id":    reviewID,
+			"body":  body,
+			"state": state,
+			"user": map[string]interface{}{
+				"login": user,
+			},
+		},
+		"pull_request": map[string]interface{}{
+			"number": prNum,
+			"head": map[string]interface{}{
+				"ref": branch,
+			},
+		},
+		"repository": map[string]interface{}{
+			"full_name": fmt.Sprintf("%s/%s", owner, repo),
+		},
+		"installation": map[string]interface{}{
+			"id": installationID,
+		},
+	}
+	data, _ := json.Marshal(payload)
+	return data
+}
+
 func sendWebhook(t *testing.T, eventType string, payload []byte) {
 	t.Helper()
 
@@ -309,7 +387,8 @@ func sendWebhook(t *testing.T, eventType string, payload []byte) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("webhook returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("webhook returned status %d: %s", resp.StatusCode, string(body))
 	}
 }
 

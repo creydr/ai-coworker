@@ -209,15 +209,15 @@ System tests verify the full request lifecycle: webhook POST → GitHub adapter 
 make test-systemtest
 ```
 
-This single command handles all setup automatically:
+**Prerequisites:** [Ollama](https://ollama.com) must be installed and running locally. Install via `curl -fsSL https://ollama.com/install.sh | sh` and start with `ollama serve`.
+
+This single command handles all remaining setup automatically:
 
 1. Starts PostgreSQL via Docker Compose (`postgres-systemtest` on port 5433)
-2. Starts a local Docker registry on port 5001
+2. Starts a local Docker registry on port 5002
 3. Builds and pushes the test sandbox image to the local registry
-4. Downloads Ollama to `./bin/` if not already present
-5. Starts the Ollama server if not already running
-6. Pulls the configured model (default: `qwen3:1.7b`)
-7. Builds the `ai-coworker` binary, starts it as a subprocess, and runs the tests
+4. Pulls the configured model (default: `qwen3:1.7b`)
+5. Builds the `ai-coworker` binary, starts it as a subprocess, and runs the tests
 
 All configuration has sensible defaults in the Makefile. Override with environment variables if needed:
 
@@ -226,7 +226,7 @@ All configuration has sensible defaults in the Makefile. Override with environme
 | `SYSTEMTEST_DATABASE_URL` | `postgres://ai_coworker:test@localhost:5433/ai_coworker_systemtest?sslmode=disable` | PostgreSQL connection string |
 | `SYSTEMTEST_OLLAMA_URL` | `http://localhost:11434/v1` | Ollama API endpoint |
 | `SYSTEMTEST_MODEL` | `qwen3:1.7b` | LLM model for intent classification |
-| `SYSTEMTEST_REGISTRY` | `localhost:5001` | Docker registry for test sandbox image |
+| `SYSTEMTEST_REGISTRY` | `localhost:5002` | Docker registry for test sandbox image |
 | `SYSTEMTEST_SANDBOX_IMAGE` | `$(SYSTEMTEST_REGISTRY)/ai-coworker-systemtest-sandbox:latest` | Full sandbox image reference |
 
 ### Linting
