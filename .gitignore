@@ -1,4 +1,5 @@
 /ai-coworker
+/bin/
 *.exe
 .env
 .idea/

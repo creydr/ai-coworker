@@ -82,13 +82,5 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install Ollama
-        run: curl -fsSL https://ollama.com/install.sh | sh
-
-      - name: Start Ollama
-        run: |
-          ollama serve &
-          sleep 5
-
       - name: System Tests
         run: make test-systemtest
