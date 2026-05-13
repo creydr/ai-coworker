@@ -13,17 +13,21 @@ import (
 	"time"
 )
 
+// issueComment represents a comment posted via the fake GitHub API.
 type issueComment struct {
 	ID        int64     `json:"id"`
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// reaction represents a reaction (e.g. "eyes") created via the fake GitHub API.
 type reaction struct {
 	ID      int64  `json:"id"`
 	Content string `json:"content"`
 }
 
+// fakeGitHub is an in-memory GitHub API server that records comments and reactions
+// posted by the adapter, allowing tests to assert on the responses.
 type fakeGitHub struct {
 	server *httptest.Server
 
@@ -39,6 +43,7 @@ func (fg *fakeGitHub) url() string {
 	return fg.server.URL
 }
 
+// handleGetApp returns a minimal GitHub App descriptor (GET /app).
 func (fg *fakeGitHub) handleGetApp(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":   12345,
@@ -47,6 +52,7 @@ func (fg *fakeGitHub) handleGetApp(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// handleCreateAccessToken returns a fake installation access token (POST /app/installations/{id}/access_tokens).
 func (fg *fakeGitHub) handleCreateAccessToken(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"token":      "ghs_fake_installation_token",
@@ -54,6 +60,7 @@ func (fg *fakeGitHub) handleCreateAccessToken(w http.ResponseWriter, _ *http.Req
 	})
 }
 
+// handleGetInstallation returns a fake installation for the repository (GET /repos/{owner}/{repo}/installation).
 func (fg *fakeGitHub) handleGetInstallation(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":          99,
@@ -62,6 +69,7 @@ func (fg *fakeGitHub) handleGetInstallation(w http.ResponseWriter, _ *http.Reque
 	})
 }
 
+// handleCreateIssueComment stores a comment posted to an issue or PR (POST /repos/{owner}/{repo}/issues/{num}/comments).
 func (fg *fakeGitHub) handleCreateIssueComment(w http.ResponseWriter, r *http.Request) {
 	owner := r.PathValue("owner")
 	repo := r.PathValue("repo")
@@ -95,6 +103,7 @@ func (fg *fakeGitHub) handleCreateIssueComment(w http.ResponseWriter, r *http.Re
 	})
 }
 
+// handleCreatePRComment stores a review comment on a PR (POST /repos/{owner}/{repo}/pulls/{num}/comments).
 func (fg *fakeGitHub) handleCreatePRComment(w http.ResponseWriter, r *http.Request) {
 	owner := r.PathValue("owner")
 	repo := r.PathValue("repo")
@@ -129,10 +138,12 @@ func (fg *fakeGitHub) handleCreatePRComment(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+// handleListReviewComments returns an empty list of inline review comments (GET /repos/{owner}/{repo}/pulls/{num}/reviews/{id}/comments).
 func (fg *fakeGitHub) handleListReviewComments(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, []interface{}{})
 }
 
+// handleGetPRComment returns a stub PR comment (GET /repos/{owner}/{repo}/pulls/comments/{id}).
 func (fg *fakeGitHub) handleGetPRComment(w http.ResponseWriter, r *http.Request) {
 	commentID := r.PathValue("commentID")
 	id, _ := strconv.ParseInt(commentID, 10, 64)
@@ -143,14 +154,17 @@ func (fg *fakeGitHub) handleGetPRComment(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// handleCreatePRCommentReaction records a reaction on a PR comment.
 func (fg *fakeGitHub) handleCreatePRCommentReaction(w http.ResponseWriter, r *http.Request) {
 	fg.createReaction(w, r, "pr_comment")
 }
 
+// handleCreateIssueCommentReaction records a reaction on an issue comment.
 func (fg *fakeGitHub) handleCreateIssueCommentReaction(w http.ResponseWriter, r *http.Request) {
 	fg.createReaction(w, r, "issue_comment")
 }
 
+// createReaction is the shared implementation for PR and issue comment reaction endpoints.
 func (fg *fakeGitHub) createReaction(w http.ResponseWriter, r *http.Request, commentType string) {
 	commentID := r.PathValue("commentID")
 
@@ -180,6 +194,7 @@ func (fg *fakeGitHub) createReaction(w http.ResponseWriter, r *http.Request, com
 	})
 }
 
+// getIssueComments returns all comments recorded for the given issue.
 func (fg *fakeGitHub) getIssueComments(owner, repo string, issueNum int) []issueComment {
 	fg.mu.Lock()
 	defer fg.mu.Unlock()
@@ -187,6 +202,7 @@ func (fg *fakeGitHub) getIssueComments(owner, repo string, issueNum int) []issue
 	return fg.issueComments[key]
 }
 
+// getReactions returns all reactions recorded for the given comment.
 func (fg *fakeGitHub) getReactions(commentType string, commentID int64) []reaction {
 	fg.mu.Lock()
 	defer fg.mu.Unlock()
@@ -200,10 +216,12 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// waitForIssueComment polls until the first non-empty comment appears on the given issue.
 func (fg *fakeGitHub) waitForIssueComment(owner, repo string, issueNum int, timeout time.Duration) (issueComment, bool) {
 	return fg.waitForNthIssueComment(owner, repo, issueNum, 1, timeout)
 }
 
+// waitForNthIssueComment polls until at least n non-empty comments exist, then returns the nth.
 func (fg *fakeGitHub) waitForNthIssueComment(owner, repo string, issueNum, n int, timeout time.Duration) (issueComment, bool) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

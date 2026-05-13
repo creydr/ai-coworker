@@ -108,6 +108,9 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// TestGitHubIssueCommentResponse verifies the full issue comment lifecycle:
+// webhook → intent classification → executor → response posted back via the GitHub API.
+// "Discussion" expects a direct LLM response; "Code task" expects sandbox execution.
 func TestGitHubIssueCommentResponse(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -157,6 +160,8 @@ func TestGitHubIssueCommentResponse(t *testing.T) {
 	}
 }
 
+// TestGitHubIssueCommentAcknowledgement verifies that the adapter reacts with
+// an "eyes" emoji on the triggering comment to signal it was received.
 func TestGitHubIssueCommentAcknowledgement(t *testing.T) {
 	issueNum := 2
 	commentID := int64(43)
@@ -178,6 +183,9 @@ func TestGitHubIssueCommentAcknowledgement(t *testing.T) {
 	t.Fatal("timed out waiting for eyes reaction acknowledgement")
 }
 
+// TestGitHubPRReviewResponse verifies the pull_request_review webhook path:
+// the review_state metadata short-circuits intent classification to "review",
+// triggering sandbox execution instead of a direct LLM response.
 func TestGitHubPRReviewResponse(t *testing.T) {
 	prNum := 5
 	reviewID := int64(200)
@@ -200,6 +208,9 @@ func TestGitHubPRReviewResponse(t *testing.T) {
 	t.Logf("received response: %s", comment.Body)
 }
 
+// TestGitHubConversationHistory verifies that multiple messages on the same
+// issue share a conversation thread. The second message asks the LLM to recall
+// information from the first, proving that stored message history is passed along.
 func TestGitHubConversationHistory(t *testing.T) {
 	issueNum := 10
 
@@ -237,6 +248,7 @@ type configParams struct {
 	FakeGitHubURL string
 }
 
+// renderConfig renders the config.yaml.tmpl template with the given params and writes it to a temp file.
 func renderConfig(params configParams) (string, error) {
 	tmpl, err := template.ParseFiles("testdata/config.yaml.tmpl")
 	if err != nil {
@@ -257,6 +269,7 @@ func renderConfig(params configParams) (string, error) {
 	return f.Name(), nil
 }
 
+// buildBinary compiles the ai-coworker binary to a temp file and returns its path.
 func buildBinary() (string, error) {
 	f, err := os.CreateTemp("", "ai-coworker-systemtest-*")
 	if err != nil {
@@ -275,6 +288,7 @@ func buildBinary() (string, error) {
 	return f.Name(), nil
 }
 
+// startBinary launches the ai-coworker binary as a subprocess with the given config.
 func startBinary(ctx context.Context, binaryPath, configPath string) (*exec.Cmd, error) {
 	cmd := exec.CommandContext(ctx, binaryPath, "--config", configPath)
 	cmd.Stdout = os.Stdout
@@ -285,6 +299,7 @@ func startBinary(ctx context.Context, binaryPath, configPath string) (*exec.Cmd,
 	return cmd, nil
 }
 
+// waitForReady polls the webhook endpoint until it responds, indicating the binary is ready.
 func waitForReady(addr string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	url := fmt.Sprintf("http://%s/webhook/github", addr)
@@ -300,6 +315,7 @@ func waitForReady(addr string, timeout time.Duration) error {
 	return fmt.Errorf("binary not ready after %s", timeout)
 }
 
+// generateRSAKey creates a throwaway RSA private key in PEM format for GitHub App JWT signing.
 func generateRSAKey() ([]byte, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -309,6 +325,7 @@ func generateRSAKey() ([]byte, error) {
 	return pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: der}), nil
 }
 
+// buildIssueCommentPayload constructs a GitHub issue_comment webhook JSON payload.
 func buildIssueCommentPayload(owner, repo string, issueNum int, commentID int64, body, user string, installationID int64) []byte {
 	payload := map[string]interface{}{
 		"action": "created",
@@ -336,6 +353,7 @@ func buildIssueCommentPayload(owner, repo string, issueNum int, commentID int64,
 	return data
 }
 
+// buildPullRequestReviewPayload constructs a GitHub pull_request_review webhook JSON payload.
 func buildPullRequestReviewPayload(owner, repo string, prNum int, reviewID int64, body, user, state, branch string, installationID int64) []byte {
 	payload := map[string]interface{}{
 		"action": "submitted",
@@ -364,6 +382,7 @@ func buildPullRequestReviewPayload(owner, repo string, prNum int, reviewID int64
 	return data
 }
 
+// sendWebhook posts a signed webhook event to the running ai-coworker binary.
 func sendWebhook(t *testing.T, eventType string, payload []byte) {
 	t.Helper()
 
@@ -392,12 +411,14 @@ func sendWebhook(t *testing.T, eventType string, payload []byte) {
 	}
 }
 
+// computeSignature calculates the HMAC-SHA256 signature for webhook payload verification.
 func computeSignature(secret, payload []byte) string {
 	mac := hmac.New(sha256.New, secret)
 	mac.Write(payload)
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
+// resetDatabase drops and recreates the test database to ensure a clean state between runs.
 func resetDatabase(databaseURL string) error {
 	u, err := url.Parse(databaseURL)
 	if err != nil {
@@ -427,6 +448,7 @@ func resetDatabase(databaseURL string) error {
 	return nil
 }
 
+// indentPEM prepends each line of a PEM block with the given indent for YAML embedding.
 func indentPEM(pem, indent string) string {
 	var lines []string
 	for _, line := range strings.Split(strings.TrimRight(pem, "\n"), "\n") {
@@ -435,6 +457,7 @@ func indentPEM(pem, indent string) string {
 	return strings.Join(lines, "\n")
 }
 
+// newFakeGitHubForMain creates a fake GitHub API server with all endpoints needed by the adapter.
 func newFakeGitHubForMain() *fakeGitHub {
 	fg := &fakeGitHub{
 		issueComments:  make(map[string][]issueComment),
@@ -460,6 +483,7 @@ func newFakeGitHubForMain() *fakeGitHub {
 	return fg
 }
 
+// requireEnv reads an environment variable or fatally exits if it is not set.
 func requireEnv(key string) string {
 	v := os.Getenv(key)
 	if v == "" {

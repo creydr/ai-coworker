@@ -298,9 +298,11 @@ REGISTRY=ghcr.io/myorg make docker sandbox-image kind-load
 | `make run` | Build and run the service |
 | `make test` | Run unit tests |
 | `make lint` | Run golangci-lint |
-| `make test-systemtest` | Run system tests (sets up all dependencies automatically) |
+| `make test-systemtest` | Run system tests (requires Ollama installed locally) |
 | `make dev-db` | Start PostgreSQL 16 via Docker Compose |
 | `make systemtest-db` | Start PostgreSQL 17 for system tests via Docker Compose |
+| `make systemtest-registry` | Start local Docker registry on port 5002 |
+| `make systemtest-sandbox-image` | Build and push test sandbox image to local registry |
 | `make sandbox-image` | Build the sandbox Docker image locally |
 | `make docker` | Build the service Docker image |
 | `make kind-create` | Create a KinD cluster for local testing |
