@@ -254,6 +254,77 @@ func TestRouter_HandleEvent_Acknowledge(t *testing.T) {
 	}
 }
 
+func TestRouter_HandleEvent_MixedThreadsRejected(t *testing.T) {
+	ms := newMockStore()
+	r := NewRouter(ms)
+
+	events := []domain.IncomingEvent{
+		{
+			ChannelRef: domain.ChannelRef{Channel: "github", ThreadKey: "org/repo#1"},
+			Content:    "first",
+		},
+		{
+			ChannelRef: domain.ChannelRef{Channel: "github", ThreadKey: "org/repo#2"},
+			Content:    "second",
+		},
+	}
+
+	err := r.HandleEvent(context.Background(), events)
+	if err == nil {
+		t.Fatal("expected error for mixed-thread batch, got nil")
+	}
+	if len(ms.tasks) != 0 {
+		t.Errorf("expected no tasks created, got %d", len(ms.tasks))
+	}
+}
+
+func TestRouter_HandleEvent_MixedChannelsRejected(t *testing.T) {
+	ms := newMockStore()
+	r := NewRouter(ms)
+
+	events := []domain.IncomingEvent{
+		{
+			ChannelRef: domain.ChannelRef{Channel: "github", ThreadKey: "org/repo#1"},
+			Content:    "first",
+		},
+		{
+			ChannelRef: domain.ChannelRef{Channel: "slack", ThreadKey: "org/repo#1"},
+			Content:    "second",
+		},
+	}
+
+	err := r.HandleEvent(context.Background(), events)
+	if err == nil {
+		t.Fatal("expected error for mixed-channel batch, got nil")
+	}
+	if len(ms.tasks) != 0 {
+		t.Errorf("expected no tasks created, got %d", len(ms.tasks))
+	}
+}
+
+func TestRouter_HandleEvent_SameThreadBatchAllowed(t *testing.T) {
+	ms := newMockStore()
+	r := NewRouter(ms)
+
+	events := []domain.IncomingEvent{
+		{
+			ChannelRef: domain.ChannelRef{Channel: "github", ThreadKey: "org/repo#1"},
+			Content:    "first",
+		},
+		{
+			ChannelRef: domain.ChannelRef{Channel: "github", ThreadKey: "org/repo#1"},
+			Content:    "second",
+		},
+	}
+
+	if err := r.HandleEvent(context.Background(), events); err != nil {
+		t.Fatalf("HandleEvent: %v", err)
+	}
+	if len(ms.tasks) != 2 {
+		t.Errorf("expected 2 tasks, got %d", len(ms.tasks))
+	}
+}
+
 func TestRouter_HandleEvent_ExistingThread(t *testing.T) {
 	ms := newMockStore()
 	existingThread := &domain.Thread{

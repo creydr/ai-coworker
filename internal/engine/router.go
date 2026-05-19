@@ -45,6 +45,15 @@ func (r *Router) HandleEvent(ctx context.Context, events []domain.IncomingEvent)
 		return nil
 	}
 
+	ref := events[0].ChannelRef
+	for i := 1; i < len(events); i++ {
+		e := events[i].ChannelRef
+		if e.Channel != ref.Channel || e.ThreadKey != ref.ThreadKey {
+			return fmt.Errorf("batch contains mixed threads: event[0]=%s/%s, event[%d]=%s/%s",
+				ref.Channel, ref.ThreadKey, i, e.Channel, e.ThreadKey)
+		}
+	}
+
 	// Acknowledge all events first (HTTP round-trips) before inserting
 	// any tasks, so workers can't claim the first task while later
 	// acknowledgments are still in flight.
@@ -57,7 +66,6 @@ func (r *Router) HandleEvent(ctx context.Context, events []domain.IncomingEvent)
 	}
 
 	// Look up or create the thread (all events in a batch share the same thread).
-	ref := events[0].ChannelRef
 	thread, err := r.store.GetThreadByChannelRef(ctx, ref.Channel, ref.ThreadKey)
 	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
