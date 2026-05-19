@@ -57,7 +57,7 @@ type Adapter interface {
 
 **Slack Adapter** (`internal/adapter/slack/`) — Connects via Slack Socket Mode (outbound WebSocket, no public URL needed). Triggers on `app_mention` events. When receiving a mention inside an existing thread, fetches full thread history via `GetConversationRepliesContext` and prepends it as a `[Thread context:]` block before the `[Current message:]`, giving downstream components full conversation context for follow-up messages. Responds in-thread and reacts with :eyes: to acknowledge.
 
-Both adapters use typed helpers (`ref.go`) to construct and parse `ChannelRef` values, keeping adapter-specific routing data in the opaque `Properties` map while the domain layer stays adapter-agnostic.
+Both adapters use typed helpers (`ref.go`) to construct and parse `ChannelRef` values, keeping adapter-specific routing data in the opaque `Properties` map while the domain layer stays adapter-agnostic. If any adapter's `Start` method returns an error, the process cancels the root context, triggering a graceful shutdown of all remaining components.
 
 ### Event Router
 
@@ -185,7 +185,7 @@ Key operations:
 - `ClaimNextTask` — atomically claims the oldest pending task using `pg_try_advisory_xact_lock` and `FOR UPDATE` to prevent concurrent claims across workers.
 - `ClaimPendingTasks` — atomically claims all pending tasks for a given thread, used by the review task batching logic.
 
-Migrations are embedded as SQL files (`internal/store/migrations/`) and applied automatically on startup.
+Migrations are embedded as SQL files (`internal/store/migrations/`) and applied automatically on startup. A session-level advisory lock (`pg_advisory_lock`) serializes migration runs across concurrent instances, so multiple replicas starting simultaneously won't race on schema changes.
 
 ## Thread Model
 
