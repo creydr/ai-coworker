@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -155,7 +156,6 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 	// Build executor context — use merged input if we absorbed tasks.
 	if len(absorbedTasks) > 0 {
 		event.Content = buildMergedReviewInput(task, absorbedTasks)
-		task.Input = event.Content
 	}
 
 	execCtx := &executor.Context{
@@ -342,6 +342,7 @@ func parseCommentResponses(output string) map[int]string {
 func (wp *WorkerPool) routeBatchedResponses(ctx context.Context, thread *domain.Thread, allTasks []*domain.Task, fullResponse string) error {
 	perComment := parseCommentResponses(fullResponse)
 
+	var errs []error
 	for i, t := range allTasks {
 		var response string
 		if perComment != nil {
@@ -360,11 +361,11 @@ func (wp *WorkerPool) routeBatchedResponses(ctx context.Context, thread *domain.
 			t.Status = domain.TaskCompleted
 			t.Result = response
 			if err := wp.store.UpdateTask(ctx, t); err != nil {
-				return fmt.Errorf("completing absorbed task %s: %w", t.ID, err)
+				errs = append(errs, fmt.Errorf("completing absorbed task %s: %w", t.ID, err))
 			}
 		}
 
 		wp.routeResponse(ctx, thread, t, response)
 	}
-	return nil
+	return errors.Join(errs...)
 }
