@@ -6,6 +6,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/creydr/ai-coworker/internal/sandbox"
 )
@@ -246,5 +249,102 @@ func TestBuildJobWithoutSkillImages(t *testing.T) {
 	}
 	if len(pod.Volumes) != 1 {
 		t.Errorf("len(Volumes) = %d, want 1 (prompt only)", len(pod.Volumes))
+	}
+}
+
+func TestGetPodExitCode(t *testing.T) {
+	tests := []struct {
+		name         string
+		pods         []runtime.Object
+		wantExitCode int32
+		wantReason   string
+	}{
+		{
+			name:         "no pods",
+			pods:         nil,
+			wantExitCode: 1,
+			wantReason:   "",
+		},
+		{
+			name: "terminated with OOMKilled",
+			pods: []runtime.Object{
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "sandbox-abc-xyz",
+						Namespace: "test-ns",
+						Labels:    map[string]string{"job-name": "sandbox-abc"},
+					},
+					Status: corev1.PodStatus{
+						ContainerStatuses: []corev1.ContainerStatus{{
+							State: corev1.ContainerState{
+								Terminated: &corev1.ContainerStateTerminated{
+									ExitCode: 137,
+									Reason:   "OOMKilled",
+								},
+							},
+						}},
+					},
+				},
+			},
+			wantExitCode: 137,
+			wantReason:   "OOMKilled",
+		},
+		{
+			name: "terminated with exit code 2",
+			pods: []runtime.Object{
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "sandbox-abc-xyz",
+						Namespace: "test-ns",
+						Labels:    map[string]string{"job-name": "sandbox-abc"},
+					},
+					Status: corev1.PodStatus{
+						ContainerStatuses: []corev1.ContainerStatus{{
+							State: corev1.ContainerState{
+								Terminated: &corev1.ContainerStateTerminated{
+									ExitCode: 2,
+									Reason:   "Error",
+								},
+							},
+						}},
+					},
+				},
+			},
+			wantExitCode: 2,
+			wantReason:   "Error",
+		},
+		{
+			name: "no terminated state",
+			pods: []runtime.Object{
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "sandbox-abc-xyz",
+						Namespace: "test-ns",
+						Labels:    map[string]string{"job-name": "sandbox-abc"},
+					},
+					Status: corev1.PodStatus{
+						ContainerStatuses: []corev1.ContainerStatus{{
+							State: corev1.ContainerState{},
+						}},
+					},
+				},
+			},
+			wantExitCode: 1,
+			wantReason:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cs := fake.NewSimpleClientset(tt.pods...)
+			r := NewWithClient(cs, "test-ns", "")
+			exitCode, reason := r.getPodExitCode(t.Context(), "sandbox-abc")
+			if exitCode != tt.wantExitCode {
+				t.Errorf("exitCode = %d, want %d", exitCode, tt.wantExitCode)
+			}
+			if reason != tt.wantReason {
+				t.Errorf("reason = %q, want %q", reason, tt.wantReason)
+			}
+		})
 	}
 }

@@ -121,15 +121,31 @@ func (r *Runtime) waitForJob(ctx context.Context, name string) (int32, string, e
 			return 0, "", nil
 		}
 		if job.Status.Failed > 0 {
-			msg := ""
-			if len(job.Status.Conditions) > 0 {
+			exitCode, reason := r.getPodExitCode(ctx, name)
+			msg := reason
+			if msg == "" && len(job.Status.Conditions) > 0 {
 				msg = job.Status.Conditions[0].Message
 			}
-			return 1, msg, nil
+			return exitCode, msg, nil
 		}
 	}
 
 	return 0, "", fmt.Errorf("job watch closed unexpectedly for %s", name)
+}
+
+func (r *Runtime) getPodExitCode(ctx context.Context, jobName string) (int32, string) {
+	pods, err := r.clientset.CoreV1().Pods(r.namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "job-name=" + jobName,
+	})
+	if err != nil || len(pods.Items) == 0 {
+		return 1, ""
+	}
+	for _, cs := range pods.Items[0].Status.ContainerStatuses {
+		if cs.State.Terminated != nil {
+			return cs.State.Terminated.ExitCode, cs.State.Terminated.Reason
+		}
+	}
+	return 1, ""
 }
 
 func (r *Runtime) readPodLogs(ctx context.Context, jobName string) (string, error) {
@@ -143,7 +159,10 @@ func (r *Runtime) readPodLogs(ctx context.Context, jobName string) (string, erro
 		return "", fmt.Errorf("no pods found for job %s", jobName)
 	}
 
-	logStream, err := r.clientset.CoreV1().Pods(r.namespace).GetLogs(pods.Items[0].Name, &corev1.PodLogOptions{}).Stream(ctx)
+	maxLogBytes := int64(10 * 1024 * 1024) // 10 MiB
+	logStream, err := r.clientset.CoreV1().Pods(r.namespace).GetLogs(pods.Items[0].Name, &corev1.PodLogOptions{
+		LimitBytes: &maxLogBytes,
+	}).Stream(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to stream pod logs: %w", err)
 	}
