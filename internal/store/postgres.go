@@ -387,6 +387,18 @@ func (s *PostgresStore) UpdateTask(ctx context.Context, t *domain.Task) error {
 	return nil
 }
 
+func (s *PostgresStore) ReapStaleTasks(ctx context.Context, staleThreshold time.Duration) (int, error) {
+	cutoff := time.Now().UTC().Add(-staleThreshold)
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE tasks SET status = 'pending', worker_id = '', updated_at = $1
+		 WHERE status = 'in_progress' AND updated_at < $2`,
+		time.Now().UTC(), cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("reaping stale tasks: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}
+
 // ---------- adapter state ----------
 
 func (s *PostgresStore) GetAdapterState(ctx context.Context, adapter, key string) (string, error) {

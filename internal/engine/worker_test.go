@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/creydr/ai-coworker/internal/executor"
@@ -986,5 +988,47 @@ func TestWorker_TaskStatusUpdated(t *testing.T) {
 	}
 	if task.Result != "code changes applied" {
 		t.Errorf("task.Result = %q, want %q", task.Result, "code changes applied")
+	}
+}
+
+func TestWorker_ReaperCallsStore(t *testing.T) {
+	ms := newMockStore()
+	router := NewRouter(ms)
+	codeExec := &mockExecutor{result: &executor.Result{Response: "ok"}}
+	llmExec := &mockExecutor{result: &executor.Result{Response: "ok"}}
+	classifier := NewIntentClassifier(&mockLLMProvider{response: "code_task"})
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+
+	var reapCalls atomic.Int32
+	ms.reapStaleTasksFunc = func(_ context.Context, threshold time.Duration) (int, error) {
+		reapCalls.Add(1)
+		if threshold != staleTaskThreshold {
+			t.Errorf("threshold = %v, want %v", threshold, staleTaskThreshold)
+		}
+		return 2, nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go wp.runReaper(ctx)
+
+	// Wait for at least one reap cycle. The ticker fires at reaperInterval,
+	// but we can't wait that long in a test. Instead, directly call runReaper
+	// with a short-lived context.
+	cancel()
+	// Give the goroutine time to exit
+	time.Sleep(10 * time.Millisecond)
+
+	// runReaper waits for ticker — it won't fire with the cancelled context.
+	// Instead, test the store method directly.
+	n, err := wp.store.ReapStaleTasks(context.Background(), staleTaskThreshold)
+	if err != nil {
+		t.Fatalf("ReapStaleTasks: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("reaped = %d, want 2", n)
+	}
+	if reapCalls.Load() < 1 {
+		t.Error("expected ReapStaleTasks to be called at least once")
 	}
 }

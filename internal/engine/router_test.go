@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/creydr/ai-coworker/internal/adapter"
 	"github.com/creydr/ai-coworker/internal/domain"
@@ -23,6 +24,7 @@ type mockStore struct {
 	claimNextTaskFunc      func(ctx context.Context, workerID string) (*domain.Task, error)
 	claimPendingTasksFunc  func(ctx context.Context, threadID, workerID string) ([]*domain.Task, error)
 	updateTaskFunc         func(ctx context.Context, t *domain.Task) error
+	reapStaleTasksFunc     func(ctx context.Context, threshold time.Duration) (int, error)
 }
 
 var _ store.Store = (*mockStore)(nil)
@@ -107,6 +109,12 @@ func (m *mockStore) UpdateTask(ctx context.Context, t *domain.Task) error {
 	return nil
 }
 
+func (m *mockStore) ReapStaleTasks(ctx context.Context, threshold time.Duration) (int, error) {
+	if m.reapStaleTasksFunc != nil {
+		return m.reapStaleTasksFunc(ctx, threshold)
+	}
+	return 0, nil
+}
 func (m *mockStore) Migrate(ctx context.Context) error { return nil }
 func (m *mockStore) Close() error                      { return nil }
 

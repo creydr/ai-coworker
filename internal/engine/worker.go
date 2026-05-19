@@ -25,6 +25,11 @@ const (
 	// reviewDebounce is the delay before absorbing sibling review tasks,
 	// giving remaining webhooks time to arrive and be persisted.
 	reviewDebounce = 500 * time.Millisecond
+	// staleTaskThreshold is the duration after which an in_progress task
+	// with no updates is considered stale and eligible for reclaim.
+	staleTaskThreshold = 30 * time.Minute
+	// reaperInterval is how often the stale task reaper runs.
+	reaperInterval = 5 * time.Minute
 )
 
 // AdapterLookup resolves a channel name to its adapter.
@@ -66,7 +71,8 @@ func NewWorkerPool(
 	}
 }
 
-// Start launches numWorkers goroutines that continuously claim and process tasks.
+// Start launches numWorkers goroutines that continuously claim and process tasks,
+// plus a background reaper that reclaims stale in_progress tasks.
 func (wp *WorkerPool) Start(ctx context.Context) {
 	for i := 0; i < wp.numWorkers; i++ {
 		workerID := fmt.Sprintf("worker-%d", i)
@@ -76,11 +82,35 @@ func (wp *WorkerPool) Start(ctx context.Context) {
 			wp.runWorker(ctx, workerID)
 		}()
 	}
+
+	wp.wg.Add(1)
+	go func() {
+		defer wp.wg.Done()
+		wp.runReaper(ctx)
+	}()
 }
 
 // Wait blocks until all worker goroutines have exited.
 func (wp *WorkerPool) Wait() {
 	wp.wg.Wait()
+}
+
+func (wp *WorkerPool) runReaper(ctx context.Context) {
+	ticker := time.NewTicker(reaperInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := wp.store.ReapStaleTasks(ctx, staleTaskThreshold)
+			if err != nil {
+				slog.Error("error reaping stale tasks", "error", err)
+			} else if n > 0 {
+				slog.Warn("reaped stale tasks", "count", n)
+			}
+		}
+	}
 }
 
 func (wp *WorkerPool) runWorker(ctx context.Context, workerID string) {

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/creydr/ai-coworker/internal/domain"
 )
@@ -42,6 +43,10 @@ type Store interface {
 
 	// UpdateTask saves changes to an existing task.
 	UpdateTask(ctx context.Context, t *domain.Task) error
+
+	// ReapStaleTasks resets tasks stuck in in_progress longer than the
+	// given threshold back to pending so they can be reclaimed.
+	ReapStaleTasks(ctx context.Context, staleThreshold time.Duration) (int, error)
 
 	// GetAdapterState retrieves a state value for the given adapter and key.
 	// Returns ErrNotFound if no entry exists.
