@@ -991,3 +991,52 @@ func TestHandlePRReview_ReplyCommentResolvesLineInfo(t *testing.T) {
 		t.Errorf("path = %q, want %q", events[0].Metadata["path"], ".github/workflows/test.yml")
 	}
 }
+
+func TestHandlePRReview_PaginatesComments(t *testing.T) {
+	const secret = "test-secret"
+	a := newTestAdapter(t, secret, "ai-coworker")
+
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("/repos/org/repo/pulls/3/reviews/55555/comments", func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		if page == "" || page == "1" {
+			w.Header().Set("Link", `<`+r.URL.Path+`?page=2&per_page=100>; rel="next"`)
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{
+				{"id": 111, "body": "@ai-coworker page1", "path": "a.go"},
+			})
+		} else {
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{
+				{"id": 222, "body": "page2", "path": "b.go"},
+			})
+		}
+	})
+	mockAPI := injectMockGitHubAPI(t, a, 77777, apiMux)
+	defer mockAPI.Close()
+
+	var events []domain.IncomingEvent
+	handler := adapter.EventHandler(func(_ context.Context, evs []domain.IncomingEvent) error {
+		events = append(events, evs...)
+		return nil
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook/github", func(w http.ResponseWriter, r *http.Request) {
+		a.handleWebhook(r.Context(), w, r, handler)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	payload := prReviewPayload(t, "@ai-coworker check", "org/repo", "reviewer", 3, 55555, 77777, "feat/fix", "changes_requested")
+	resp := sendWebhook(t, ts, "pull_request_review", payload, secret)
+	_ = resp.Body.Close()
+
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events (1 body + 2 comments from 2 pages), got %d", len(events))
+	}
+	if events[1].Metadata["path"] != "a.go" {
+		t.Errorf("event[1] path = %q, want %q", events[1].Metadata["path"], "a.go")
+	}
+	if events[2].Metadata["path"] != "b.go" {
+		t.Errorf("event[2] path = %q, want %q", events[2].Metadata["path"], "b.go")
+	}
+}

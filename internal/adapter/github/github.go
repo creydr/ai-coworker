@@ -277,9 +277,18 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 	if err != nil {
 		return err
 	}
-	comments, _, err := client.PullRequests.ListReviewComments(ctx, owner, repo, prNum, reviewID, nil)
-	if err != nil {
-		return fmt.Errorf("listing review comments: %w", err)
+	var comments []*gh.PullRequestComment
+	opts := &gh.ListOptions{PerPage: 100}
+	for {
+		page, resp, err := client.PullRequests.ListReviewComments(ctx, owner, repo, prNum, reviewID, opts)
+		if err != nil {
+			return fmt.Errorf("listing review comments: %w", err)
+		}
+		comments = append(comments, page...)
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
 	}
 
 	// Nothing to process if both body and comments are empty.
