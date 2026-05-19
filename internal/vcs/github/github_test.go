@@ -5,7 +5,7 @@ import (
 )
 
 func TestParseRepoFromURL(t *testing.T) {
-	p := &Provider{}
+	p := &Provider{webHost: "github.com"}
 
 	tests := []struct {
 		url      string
@@ -37,7 +37,7 @@ func TestParseRepoFromURL(t *testing.T) {
 }
 
 func TestCloneURL(t *testing.T) {
-	p := &Provider{}
+	p := &Provider{webHost: "github.com"}
 	got := p.CloneURL("org/repo")
 	want := "https://github.com/org/repo.git"
 	if got != want {
@@ -53,7 +53,7 @@ func TestTokenEnvVar(t *testing.T) {
 }
 
 func TestCredentialURL(t *testing.T) {
-	p := &Provider{}
+	p := &Provider{webHost: "github.com"}
 	got := p.CredentialURL("test-token")
 	want := "https://x-access-token:test-token@github.com"
 	if got != want {
@@ -90,6 +90,55 @@ func TestSplitRepo(t *testing.T) {
 		if owner != tt.wantOwner || repo != tt.wantRepo {
 			t.Errorf("SplitRepo(%q) = (%q, %q), want (%q, %q)", tt.input, owner, repo, tt.wantOwner, tt.wantRepo)
 		}
+	}
+}
+
+func TestNew_GHEWebHost(t *testing.T) {
+	p := New(nil, "https://github.example.com/api/v3")
+	if p.webHost != "github.example.com" {
+		t.Errorf("webHost = %q, want %q", p.webHost, "github.example.com")
+	}
+}
+
+func TestNew_DefaultWebHost(t *testing.T) {
+	p := New(nil, "")
+	if p.webHost != "github.com" {
+		t.Errorf("webHost = %q, want %q", p.webHost, "github.com")
+	}
+}
+
+func TestParseRepoFromURL_GHE(t *testing.T) {
+	p := &Provider{webHost: "github.example.com"}
+
+	repo, ok := p.ParseRepoFromURL("https://github.example.com/org/repo/pull/5")
+	if !ok {
+		t.Fatal("expected ok = true for GHE URL")
+	}
+	if repo != "org/repo" {
+		t.Errorf("repo = %q, want %q", repo, "org/repo")
+	}
+
+	_, ok = p.ParseRepoFromURL("https://github.com/org/repo")
+	if ok {
+		t.Error("expected ok = false for github.com URL on GHE provider")
+	}
+}
+
+func TestCloneURL_GHE(t *testing.T) {
+	p := &Provider{webHost: "github.example.com"}
+	got := p.CloneURL("org/repo")
+	want := "https://github.example.com/org/repo.git"
+	if got != want {
+		t.Errorf("CloneURL = %q, want %q", got, want)
+	}
+}
+
+func TestCredentialURL_GHE(t *testing.T) {
+	p := &Provider{webHost: "github.example.com"}
+	got := p.CredentialURL("test-token")
+	want := "https://x-access-token:test-token@github.example.com"
+	if got != want {
+		t.Errorf("CredentialURL = %q, want %q", got, want)
 	}
 }
 

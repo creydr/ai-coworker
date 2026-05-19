@@ -21,13 +21,20 @@ var _ vcs.Provider = (*Provider)(nil)
 type Provider struct {
 	appsTransport     *ghinstallation.AppsTransport
 	apiBaseURL        string
+	webHost           string
 	repoInstallations sync.Map
 	discoverGroup     singleflight.Group
 }
 
 // New creates a new GitHub VCS provider.
 func New(appsTransport *ghinstallation.AppsTransport, apiBaseURL string) *Provider {
-	return &Provider{appsTransport: appsTransport, apiBaseURL: apiBaseURL}
+	webHost := "github.com"
+	if apiBaseURL != "" {
+		if u, err := url.Parse(apiBaseURL); err == nil && u.Host != "" {
+			webHost = u.Host
+		}
+	}
+	return &Provider{appsTransport: appsTransport, apiBaseURL: apiBaseURL, webHost: webHost}
 }
 
 func (p *Provider) Name() string { return "github" }
@@ -40,7 +47,7 @@ func (p *Provider) ParseRepoFromURL(rawURL string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	if u.Host != "github.com" {
+	if u.Host != p.webHost {
 		return "", false
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
@@ -72,13 +79,13 @@ func (p *Provider) CreateTokenForRepo(ctx context.Context, fullRepo string) (str
 }
 
 func (p *Provider) CloneURL(repo string) string {
-	return fmt.Sprintf("https://github.com/%s.git", repo)
+	return fmt.Sprintf("https://%s/%s.git", p.webHost, repo)
 }
 
 func (p *Provider) TokenEnvVar() string { return "GITHUB_TOKEN" }
 
 func (p *Provider) CredentialURL(token string) string {
-	return fmt.Sprintf("https://x-access-token:%s@github.com", token)
+	return fmt.Sprintf("https://x-access-token:%s@%s", token, p.webHost)
 }
 
 // TrackInstallation caches the installation ID for a repo. Called by the
