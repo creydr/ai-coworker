@@ -127,8 +127,9 @@ func (p *Provider) discoverInstallation(ctx context.Context, fullRepo string) (i
 func (p *Provider) newAppClient() *gh.Client {
 	client := gh.NewClient(&http.Client{Transport: p.appsTransport})
 	if p.apiBaseURL != "" {
-		baseURL, _ := url.Parse(strings.TrimRight(p.apiBaseURL, "/") + "/")
-		client.BaseURL = baseURL
+		if baseURL, err := url.Parse(strings.TrimRight(p.apiBaseURL, "/") + "/"); err == nil {
+			client.BaseURL = baseURL
+		}
 	}
 	return client
 }

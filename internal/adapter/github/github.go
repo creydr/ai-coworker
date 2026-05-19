@@ -71,11 +71,15 @@ func New(appID int64, privateKeyPEM []byte, webhookSecret, botUsername, listenAd
 }
 
 func (a *Adapter) getInstallationClient(installationID int64) *gh.Client {
+	if v, ok := a.installationClients.Load(installationID); ok {
+		return v.(*gh.Client)
+	}
 	itr := ghinstallation.NewFromAppsTransport(a.appsTransport, installationID)
 	client := gh.NewClient(&http.Client{Transport: itr})
 	if a.apiBaseURL != "" {
-		baseURL, _ := url.Parse(strings.TrimRight(a.apiBaseURL, "/") + "/")
-		client.BaseURL = baseURL
+		if baseURL, err := url.Parse(strings.TrimRight(a.apiBaseURL, "/") + "/"); err == nil {
+			client.BaseURL = baseURL
+		}
 	}
 	v, _ := a.installationClients.LoadOrStore(installationID, client)
 	return v.(*gh.Client)
