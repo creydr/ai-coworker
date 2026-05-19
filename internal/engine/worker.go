@@ -150,6 +150,7 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 
 	exec, ok := wp.executors[intent]
 	if !ok {
+		slog.Warn("no executor mapped for intent, using default", "worker", workerID, "task", task.ID, "intent", intent)
 		exec = wp.defaultExec
 	}
 
