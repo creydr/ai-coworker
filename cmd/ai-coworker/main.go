@@ -155,7 +155,11 @@ func main() {
 		sandboxEnv["ANTHROPIC_VERTEX_REGION"] = cfg.LLM.Vertex.Region
 		adcPath := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
 		if adcPath == "" {
-			home, _ := os.UserHomeDir()
+			home, err := os.UserHomeDir()
+			if err != nil {
+				slog.Error("failed to determine home directory for ADC credentials", "error", err)
+				os.Exit(1)
+			}
 			adcPath = home + "/.config/gcloud/application_default_credentials.json"
 		}
 		adcContent, err := os.ReadFile(adcPath)
