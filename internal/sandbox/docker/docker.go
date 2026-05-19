@@ -154,29 +154,16 @@ func (r *Runtime) waitAndCollectLogs(ctx context.Context, containerID string) (*
 
 	statusCh, errCh := r.client.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
 
-	// Wait for the container to finish. Both channels may fire; we must
-	// always consume statusCh to get the real exit code. If errCh sends
-	// nil (no error) before statusCh is ready, loop back to wait for it.
-	var exitCode int64
-	for {
-		select {
-		case err := <-errCh:
-			if err != nil {
-				return nil, fmt.Errorf("error waiting for container: %w", err)
-			}
-			errCh = nil
-		case status := <-statusCh:
-			exitCode = status.StatusCode
-			if status.Error != nil && status.Error.Message != "" {
-				return &sandbox.ExecResult{
-					ExitCode: int(exitCode),
-					Error:    status.Error.Message,
-				}, nil
-			}
-			goto collectLogs
-		}
+	exitCode, statusErr, err := awaitContainerStatus(statusCh, errCh)
+	if err != nil {
+		return nil, err
 	}
-collectLogs:
+	if statusErr != "" {
+		return &sandbox.ExecResult{
+			ExitCode: exitCode,
+			Error:    statusErr,
+		}, nil
+	}
 
 	logReader, err := r.client.ContainerLogs(ctx, containerID, container.LogsOptions{
 		ShowStdout: true,
@@ -198,8 +185,29 @@ collectLogs:
 
 	return &sandbox.ExecResult{
 		Output:   stdout.String(),
-		ExitCode: int(exitCode),
+		ExitCode: exitCode,
 	}, nil
+}
+
+// awaitContainerStatus waits for the container to finish. Both channels may
+// fire; we must always consume statusCh to get the real exit code. If errCh
+// sends nil before statusCh is ready, we loop back to wait for it.
+func awaitContainerStatus(statusCh <-chan container.WaitResponse, errCh <-chan error) (int, string, error) {
+	for {
+		select {
+		case err := <-errCh:
+			if err != nil {
+				return 0, "", fmt.Errorf("error waiting for container: %w", err)
+			}
+			errCh = nil
+		case status := <-statusCh:
+			exitCode := int(status.StatusCode)
+			if status.Error != nil && status.Error.Message != "" {
+				return exitCode, status.Error.Message, nil
+			}
+			return exitCode, "", nil
+		}
+	}
 }
 
 // ensureImage pulls the given image so it is available locally, retrying on
