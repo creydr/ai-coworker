@@ -112,20 +112,20 @@ func TestBuildResources_InvalidInput(t *testing.T) {
 	}
 }
 
-func TestBuildConfigMap(t *testing.T) {
-	cm := buildConfigMap("sandbox-abc123", "test-ns", "do something")
+func TestBuildPromptSecret(t *testing.T) {
+	s := buildPromptSecret("sandbox-abc123", "test-ns", "do something")
 
-	if cm.Name != "sandbox-abc123" {
-		t.Errorf("Name = %q, want %q", cm.Name, "sandbox-abc123")
+	if s.Name != "sandbox-abc123" {
+		t.Errorf("Name = %q, want %q", s.Name, "sandbox-abc123")
 	}
-	if cm.Namespace != "test-ns" {
-		t.Errorf("Namespace = %q, want %q", cm.Namespace, "test-ns")
+	if s.Namespace != "test-ns" {
+		t.Errorf("Namespace = %q, want %q", s.Namespace, "test-ns")
 	}
-	if cm.Labels["app.kubernetes.io/managed-by"] != "ai-coworker" {
-		t.Errorf("managed-by label = %q, want %q", cm.Labels["app.kubernetes.io/managed-by"], "ai-coworker")
+	if s.Labels["app.kubernetes.io/managed-by"] != "ai-coworker" {
+		t.Errorf("managed-by label = %q, want %q", s.Labels["app.kubernetes.io/managed-by"], "ai-coworker")
 	}
-	if cm.Data["prompt.txt"] != "do something" {
-		t.Errorf("Data[prompt.txt] = %q, want %q", cm.Data["prompt.txt"], "do something")
+	if string(s.Data["prompt.txt"]) != "do something" {
+		t.Errorf("Data[prompt.txt] = %q, want %q", string(s.Data["prompt.txt"]), "do something")
 	}
 }
 
@@ -171,7 +171,7 @@ func TestBuildJob(t *testing.T) {
 	if len(c.VolumeMounts) != 1 || c.VolumeMounts[0].MountPath != "/tmp/prompt.txt" {
 		t.Errorf("VolumeMounts not configured correctly")
 	}
-	if len(pod.Volumes) != 1 || pod.Volumes[0].ConfigMap.Name != "sandbox-abc123" {
+	if len(pod.Volumes) != 1 || pod.Volumes[0].Secret == nil || pod.Volumes[0].Secret.SecretName != "sandbox-abc123" {
 		t.Errorf("Volumes not configured correctly")
 	}
 

@@ -59,9 +59,9 @@ func (r *Runtime) Exec(ctx context.Context, req sandbox.ExecRequest) (*sandbox.E
 		defer cancel()
 	}
 
-	cm := buildConfigMap(name, r.namespace, req.Prompt)
-	if _, err := r.clientset.CoreV1().ConfigMaps(r.namespace).Create(ctx, cm, metav1.CreateOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to create prompt configmap: %w", err)
+	secret := buildPromptSecret(name, r.namespace, req.Prompt)
+	if _, err := r.clientset.CoreV1().Secrets(r.namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
+		return nil, fmt.Errorf("failed to create prompt secret: %w", err)
 	}
 
 	resources, err := buildResources(req.CPULimit, req.MemLimit)
@@ -180,19 +180,19 @@ func (r *Runtime) cleanup(name string) {
 	_ = r.clientset.BatchV1().Jobs(r.namespace).Delete(context.Background(), name, metav1.DeleteOptions{
 		PropagationPolicy: &propagation,
 	})
-	_ = r.clientset.CoreV1().ConfigMaps(r.namespace).Delete(context.Background(), name, metav1.DeleteOptions{})
+	_ = r.clientset.CoreV1().Secrets(r.namespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 	slog.Info("sandbox job cleaned up", "job", name)
 }
 
-func buildConfigMap(name, namespace, prompt string) *corev1.ConfigMap {
-	return &corev1.ConfigMap{
+func buildPromptSecret(name, namespace, prompt string) *corev1.Secret {
+	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 			Labels:    map[string]string{"app.kubernetes.io/managed-by": "ai-coworker"},
 		},
-		Data: map[string]string{
-			"prompt.txt": prompt,
+		Data: map[string][]byte{
+			"prompt.txt": []byte(prompt),
 		},
 	}
 }
@@ -211,10 +211,8 @@ func buildJob(name, namespace, serviceAccount string, req sandbox.ExecRequest, r
 	volumes := []corev1.Volume{{
 		Name: "prompt",
 		VolumeSource: corev1.VolumeSource{
-			ConfigMap: &corev1.ConfigMapVolumeSource{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: name,
-				},
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: name,
 			},
 		},
 	}}
