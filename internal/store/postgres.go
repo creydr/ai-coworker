@@ -73,6 +73,8 @@ func NewPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, 
 // Migrate applies all outstanding schema migrations. Each migration runs in
 // its own transaction and its version is recorded in the schema_migrations
 // table so it is never re-applied.
+const migrationLockID = 741953282 // arbitrary fixed key for pg_advisory_lock
+
 func (s *PostgresStore) Migrate(ctx context.Context) error {
 	// Ensure the version-tracking table exists. This statement is
 	// deliberately idempotent so it is safe to run on every startup.
@@ -84,10 +86,24 @@ func (s *PostgresStore) Migrate(ctx context.Context) error {
 		return fmt.Errorf("creating schema_migrations table: %w", err)
 	}
 
+	// Acquire a session-level advisory lock so concurrent instances
+	// serialize their migration runs.
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquiring connection for migration lock: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationLockID); err != nil {
+		return fmt.Errorf("acquiring migration advisory lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, migrationLockID)
+	}()
+
 	for _, m := range migrations {
-		// Check whether this migration has already been applied.
 		var exists bool
-		err := s.pool.QueryRow(ctx,
+		err := conn.QueryRow(ctx,
 			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`,
 			m.version).Scan(&exists)
 		if err != nil {
@@ -97,8 +113,7 @@ func (s *PostgresStore) Migrate(ctx context.Context) error {
 			continue
 		}
 
-		// Run the migration inside a transaction.
-		tx, err := s.pool.Begin(ctx)
+		tx, err := conn.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("beginning transaction for migration %d: %w", m.version, err)
 		}
