@@ -11,6 +11,23 @@ import (
 	"github.com/docker/docker/api/types/container"
 )
 
+func TestShortID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"abcdef123456789", "abcdef123456"},
+		{"abcdef123456", "abcdef123456"},
+		{"short", "short"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := shortID(tt.input); got != tt.want {
+			t.Errorf("shortID(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestBuildEnv(t *testing.T) {
 	tests := []struct {
 		name     string

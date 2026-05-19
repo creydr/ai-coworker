@@ -150,7 +150,7 @@ func preparePromptFile(prompt string) (string, func(), error) {
 }
 
 func (r *Runtime) waitAndCollectLogs(ctx context.Context, containerID string) (*sandbox.ExecResult, error) {
-	shortID := containerID[:12]
+	sid := shortID(containerID)
 
 	statusCh, errCh := r.client.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
 
@@ -180,7 +180,7 @@ func (r *Runtime) waitAndCollectLogs(ctx context.Context, containerID string) (*
 	}
 
 	if stderr.Len() > 0 {
-		slog.Info("sandbox container stderr", "container", shortID, "stderr", stderr.String())
+		slog.Info("sandbox container stderr", "container", sid, "stderr", stderr.String())
 	}
 
 	return &sandbox.ExecResult{
@@ -244,19 +244,19 @@ func (r *Runtime) createContainer(ctx context.Context, cfg *container.Config, ho
 		return "", nil, fmt.Errorf("failed to create container: %w", err)
 	}
 
-	shortID := resp.ID[:12]
-	slog.Info("sandbox container created", "container", shortID)
+	sid := shortID(resp.ID)
+	slog.Info("sandbox container created", "container", sid)
 
 	cleanup := func() {
 		_ = r.client.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{Force: true})
-		slog.Info("sandbox container removed", "container", shortID)
+		slog.Info("sandbox container removed", "container", sid)
 	}
 
 	if err := r.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		cleanup()
 		return "", nil, fmt.Errorf("failed to start container: %w", err)
 	}
-	slog.Info("sandbox container started, follow logs with: docker logs -f "+shortID, "container", shortID)
+	slog.Info("sandbox container started, follow logs with: docker logs -f "+sid, "container", sid)
 
 	return resp.ID, cleanup, nil
 }
@@ -364,6 +364,13 @@ func extractTar(r io.Reader, dst string) error {
 			}
 		}
 	}
+}
+
+func shortID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
 }
 
 func buildEnv(envVars map[string]string) []string {
