@@ -25,9 +25,11 @@ const (
 	// reviewDebounce is the delay before absorbing sibling review tasks,
 	// giving remaining webhooks time to arrive and be persisted.
 	reviewDebounce = 500 * time.Millisecond
-	// staleTaskBuffer is the additional time added beyond the sandbox timeout
-	// before a task is considered stale.
-	staleTaskBuffer = 5 * time.Minute
+	// staleTaskThreshold is the duration after which an in_progress task
+	// with no updates is considered orphaned (worker crashed) and reset to
+	// pending. Must be well above the maximum plausible execution time so
+	// the reaper never interferes with healthy workers.
+	staleTaskThreshold = 1 * time.Hour
 	// reaperInterval is how often the stale task reaper runs.
 	reaperInterval = 5 * time.Minute
 )
@@ -45,7 +47,6 @@ type WorkerPool struct {
 	executors   map[domain.Intent]executor.Executor
 	defaultExec executor.Executor
 	numWorkers  int
-	taskTimeout time.Duration
 	wg          sync.WaitGroup
 }
 
@@ -57,7 +58,6 @@ func NewWorkerPool(
 	codeExec executor.Executor,
 	llmExec executor.Executor,
 	numWorkers int,
-	taskTimeout time.Duration,
 ) *WorkerPool {
 	return &WorkerPool{
 		store:      s,
@@ -70,7 +70,6 @@ func NewWorkerPool(
 		},
 		defaultExec: llmExec,
 		numWorkers:  numWorkers,
-		taskTimeout: taskTimeout,
 	}
 }
 
@@ -98,15 +97,7 @@ func (wp *WorkerPool) Wait() {
 	wp.wg.Wait()
 }
 
-func (wp *WorkerPool) staleThreshold() time.Duration {
-	if wp.taskTimeout > 0 {
-		return wp.taskTimeout + staleTaskBuffer
-	}
-	return 30*time.Minute + staleTaskBuffer
-}
-
 func (wp *WorkerPool) runReaper(ctx context.Context) {
-	threshold := wp.staleThreshold()
 	ticker := time.NewTicker(reaperInterval)
 	defer ticker.Stop()
 	for {
@@ -114,11 +105,11 @@ func (wp *WorkerPool) runReaper(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			n, err := wp.store.ReapStaleTasks(ctx, threshold)
+			n, err := wp.store.ReapStaleTasks(ctx, staleTaskThreshold)
 			if err != nil {
 				slog.Error("error reaping stale tasks", "error", err)
 			} else if n > 0 {
-				slog.Warn("reaped stale tasks", "count", n, "threshold", threshold)
+				slog.Warn("reaped stale tasks", "count", n)
 			}
 		}
 	}
