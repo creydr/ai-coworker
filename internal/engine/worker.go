@@ -355,6 +355,8 @@ func (wp *WorkerPool) routeBatchedResponses(ctx context.Context, thread *domain.
 			response = fullResponse
 		}
 
+		// Mark absorbed tasks as completed before routing the response
+		// to prevent duplicate processing.
 		if i > 0 {
 			t.Status = domain.TaskCompleted
 			t.Result = response
