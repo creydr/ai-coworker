@@ -325,6 +325,52 @@ func TestRouter_HandleEvent_SameThreadBatchAllowed(t *testing.T) {
 	}
 }
 
+func TestRouter_Adapters(t *testing.T) {
+	ms := newMockStore()
+	r := NewRouter(ms)
+
+	if len(r.Adapters()) != 0 {
+		t.Fatalf("expected 0 adapters, got %d", len(r.Adapters()))
+	}
+
+	a1 := &mockAdapter{name: "slack"}
+	a2 := &mockAdapter{name: "github"}
+	r.RegisterAdapter(a1)
+	r.RegisterAdapter(a2)
+
+	adapters := r.Adapters()
+	if len(adapters) != 2 {
+		t.Fatalf("expected 2 adapters, got %d", len(adapters))
+	}
+
+	names := map[string]bool{}
+	for _, a := range adapters {
+		names[a.Name()] = true
+	}
+	if !names["slack"] || !names["github"] {
+		t.Errorf("expected slack and github adapters, got %v", names)
+	}
+}
+
+func TestRouter_VCSAwareTypeAssertion(t *testing.T) {
+	ms := newMockStore()
+	r := NewRouter(ms)
+
+	plain := &mockAdapter{name: "slack"}
+	r.RegisterAdapter(plain)
+
+	var vcsAdapters []adapter.Adapter
+	for _, a := range r.Adapters() {
+		if _, ok := a.(adapter.VCSAware); ok {
+			vcsAdapters = append(vcsAdapters, a)
+		}
+	}
+
+	if len(vcsAdapters) != 0 {
+		t.Errorf("expected 0 VCSAware adapters from plain mockAdapter, got %d", len(vcsAdapters))
+	}
+}
+
 func TestRouter_HandleEvent_ExistingThread(t *testing.T) {
 	ms := newMockStore()
 	existingThread := &domain.Thread{

@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/creydr/ai-coworker/internal/adapter"
 	"github.com/creydr/ai-coworker/internal/adapter/github"
 	"github.com/creydr/ai-coworker/internal/adapter/googledocs"
 	"github.com/creydr/ai-coworker/internal/adapter/slack"
@@ -81,10 +82,8 @@ func main() {
 	}
 
 	// 7. If GitHub is enabled: create adapter, register, start in goroutine.
-	var githubAdapter *github.Adapter
 	if cfg.GitHub.Enabled {
-		var err error
-		githubAdapter, err = github.New(cfg.GitHub.AppID, []byte(cfg.GitHub.PrivateKey), cfg.GitHub.WebhookSecret, cfg.GitHub.BotUsername, cfg.GitHub.ListenAddr, cfg.GitHub.APIBaseURL, cfg.GitHub.AllowedUsers)
+		githubAdapter, err := github.New(cfg.GitHub.AppID, []byte(cfg.GitHub.PrivateKey), cfg.GitHub.WebhookSecret, cfg.GitHub.BotUsername, cfg.GitHub.ListenAddr, cfg.GitHub.APIBaseURL, cfg.GitHub.AllowedUsers)
 		if err != nil {
 			slog.Error("failed to create github adapter", "error", err)
 			os.Exit(1)
@@ -143,8 +142,10 @@ func main() {
 
 	// 9. Create Claude Code executor with sandbox runtime.
 	vcsRegistry := vcs.NewRegistry()
-	if githubAdapter != nil {
-		vcsRegistry.Register(githubAdapter.VCSProvider())
+	for _, a := range router.Adapters() {
+		if va, ok := a.(adapter.VCSAware); ok {
+			vcsRegistry.Register(va.VCSProvider())
+		}
 	}
 	sandboxEnv := map[string]string{}
 	switch cfg.LLM.Provider {
