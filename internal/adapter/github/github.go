@@ -96,7 +96,7 @@ func (a *Adapter) isUserAllowed(username string) bool {
 	return a.allowedUsers[username]
 }
 
-func (a *Adapter) denyUnauthorized(ctx context.Context, installationID int64, repoFullName string, issueNum int, body string) {
+func (a *Adapter) denyUnauthorized(ctx context.Context, installationID int64, repoFullName string, issueNum int) {
 	client := a.getInstallationClient(installationID)
 	owner, repo, err := vcsgithub.SplitRepo(repoFullName)
 	if err != nil {
@@ -104,7 +104,7 @@ func (a *Adapter) denyUnauthorized(ctx context.Context, installationID int64, re
 		return
 	}
 
-	msg := fmt.Sprintf("Sorry, you don't have permission to interact with me.\n\n> %s", strings.ReplaceAll(body, "\n", "\n> "))
+	msg := "Sorry, you don't have permission to interact with me."
 	comment := &gh.IssueComment{Body: gh.Ptr(msg)}
 	if _, _, err := client.Issues.CreateComment(ctx, owner, repo, issueNum, comment); err != nil {
 		slog.Error("error sending denial response", "error", err)
@@ -219,7 +219,7 @@ func (a *Adapter) handleIssueComment(ctx context.Context, e *gh.IssueCommentEven
 	if !a.isUserAllowed(userLogin) {
 		slog.Info("unauthorized user", "user", userLogin, "event", "issue_comment")
 		repoFullName := e.GetRepo().GetFullName()
-		a.denyUnauthorized(ctx, installationID, repoFullName, e.GetIssue().GetNumber(), body)
+		a.denyUnauthorized(ctx, installationID, repoFullName, e.GetIssue().GetNumber())
 		return nil
 	}
 
@@ -304,7 +304,7 @@ func (a *Adapter) handlePRReview(ctx context.Context, e *gh.PullRequestReviewEve
 
 	if !a.isUserAllowed(userLogin) {
 		slog.Info("unauthorized user", "user", userLogin, "event", "pr_review")
-		a.denyUnauthorized(ctx, installationID, repoFullName, prNum, body)
+		a.denyUnauthorized(ctx, installationID, repoFullName, prNum)
 		return nil
 	}
 
