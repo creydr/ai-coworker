@@ -78,7 +78,7 @@ The worker pool runs configurable goroutines (default: 4) that continuously clai
 1. Claims a task (atomically transitions `pending` → `in_progress`).
 2. Loads the thread and full message history.
 3. Classifies the intent via the `IntentClassifier`.
-4. Routes to the code executor or LLM executor.
+4. Routes to the code executor or LLM executor with a per-task context deadline derived from `sandbox.timeoutSeconds` (default: 600s). If the executor exceeds this deadline, the context is cancelled and the task is marked as failed.
 5. Stores the result and sends the response.
 
 **Review task batching:** When a worker claims a task classified as `review`, it waits briefly (500ms debounce) then calls `ClaimPendingTasks(threadID, workerID)` to absorb all remaining pending review tasks in the same thread. The absorbed tasks are merged into a single structured prompt with `--- COMMENT N ---` sections containing file path and line number context. After execution, the output is parsed by `--- COMMENT N ---` headers and individual responses are routed back to each original comment's channel reference. This avoids spinning up a separate sandbox container for each inline review comment.

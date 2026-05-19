@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/creydr/ai-coworker/internal/adapter"
 	"github.com/creydr/ai-coworker/internal/adapter/github"
@@ -199,7 +200,7 @@ func main() {
 	classifier := engine.NewIntentClassifier(llmProvider)
 
 	// 12. Create WorkerPool with all components.
-	pool := engine.NewWorkerPool(db, router, classifier, codeExec, llmExec, cfg.Workers)
+	pool := engine.NewWorkerPool(db, router, classifier, codeExec, llmExec, cfg.Workers, time.Duration(cfg.Sandbox.TimeoutSeconds)*time.Second)
 
 	// 13. Start worker pool.
 	pool.Start(ctx)
