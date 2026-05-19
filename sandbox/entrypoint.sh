@@ -1,6 +1,6 @@
 #!/bin/sh
 if [ -n "${VCS_CREDENTIAL_URLS}" ]; then
-  printf '%s\n' "${VCS_CREDENTIAL_URLS}" > ~/.git-credentials
+  (umask 077 && printf '%s\n' "${VCS_CREDENTIAL_URLS}" > ~/.git-credentials)
   git config --global credential.helper store
 fi
 if [ -n "${GITHUB_TOKEN}" ]; then
@@ -22,7 +22,10 @@ if ls /opt/skills-*/skills/*/ >/dev/null 2>&1; then
   done
 fi
 if [ -n "${CLONE_URL}" ]; then
-  git clone ${CLONE_BRANCH:+-b "$CLONE_BRANCH"} -- "$CLONE_URL" /workspace/repo
+  if ! git clone ${CLONE_BRANCH:+-b "$CLONE_BRANCH"} -- "$CLONE_URL" /workspace/repo; then
+    echo "ERROR: git clone failed for ${CLONE_URL}" >&2
+    exit 1
+  fi
   cd /workspace/repo
 fi
 cat /tmp/prompt.txt | claude --dangerously-skip-permissions -p -
