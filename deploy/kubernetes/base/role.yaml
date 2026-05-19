@@ -7,7 +7,7 @@ rules:
     resources: ["jobs"]
     verbs: ["create", "delete", "get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["configmaps"]
+    resources: ["secrets"]
     verbs: ["create", "delete", "get"]
   - apiGroups: [""]
     resources: ["pods"]

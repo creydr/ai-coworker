@@ -66,7 +66,7 @@ Both adapters use typed helpers (`ref.go`) to construct and parse `ChannelRef` v
 The router is the entry point for all incoming events. It processes events in batches:
 
 1. Acknowledges all events via the originating adapter (e.g. emoji reactions) before inserting anything.
-2. Looks up an existing thread by `(channel, thread_key)` or creates a new one. All events in a batch share the same thread.
+2. Validates that all events in the batch share the same `(channel, thread_key)`, then looks up an existing thread or creates a new one.
 3. For each event, stores the user message and enqueues a `pending` task with the event metadata.
 
 ### Worker Pool
@@ -139,7 +139,7 @@ type Runtime interface {
 Two runtime implementations:
 
 - **Docker** (`internal/sandbox/docker/`) — Creates ephemeral containers locally. Mounts the prompt as a read-only file at `/tmp/prompt.txt`. Enforces CPU and memory limits. Captures stdout/stderr and force-removes the container after execution. Default for development.
-- **Kubernetes** (`internal/sandbox/kubernetes/`) — Creates a Kubernetes Job per task. The prompt is delivered via a ConfigMap mounted at `/tmp/prompt.txt`. Job completion is monitored via the Kubernetes watch API. On completion, pod logs are read for output. Cleanup deletes both the Job (with background propagation) and ConfigMap. Jobs have `backoffLimit: 0` (no retries) and `TTLSecondsAfterFinished: 3600`. Uses `rest.InClusterConfig` and requires RBAC permissions for Jobs, ConfigMaps, and Pods in the configured namespace.
+- **Kubernetes** (`internal/sandbox/kubernetes/`) — Creates a Kubernetes Job per task. The prompt is delivered via a Secret mounted at `/tmp/prompt.txt`. Job completion is monitored via the Kubernetes watch API. On completion, pod logs are read for output. Cleanup deletes both the Job (with background propagation) and the Secret. Jobs have `backoffLimit: 0` (no retries) and `TTLSecondsAfterFinished: 3600`. Uses `rest.InClusterConfig` and requires RBAC permissions for Jobs, Secrets, and Pods in the configured namespace.
 
 Both runtimes use the same sandbox image (`sandbox/Dockerfile`), based on `node:22-bookworm` with `git`, `gh` (GitHub CLI), and `@anthropic-ai/claude-code` installed. The entrypoint script (`sandbox/entrypoint.sh`) handles VCS credential setup (`VCS_CREDENTIAL_URLS` written to `~/.git-credentials`), GitHub CLI authentication, Google Cloud ADC setup, repo cloning (with `--` separator to prevent flag injection), and Claude Code execution.
 
@@ -168,7 +168,7 @@ A `Registry` holds an ordered list of providers and offers:
 
 **GitHub** (`internal/vcs/github/`) — Implements `vcs.Provider` for GitHub. Uses the GitHub App's transport to create installation tokens scoped to a single repository. Caches installation IDs from webhook events and discovers them via the API on demand (with singleflight deduplication).
 
-The registry is wired in `main.go`: when the GitHub adapter is enabled, `githubAdapter.VCSProvider()` is registered. Future VCS backends (GitLab, Bitbucket, etc.) follow the same pattern — implement the `vcs.Provider` interface and register it.
+The registry is wired in `main.go`: after all adapters are registered, the startup loop iterates `router.Adapters()` and registers the `vcs.Provider` from any adapter that implements the optional `adapter.VCSAware` interface. Adding a new VCS backend requires implementing `vcs.Provider` and having the adapter expose it via `VCSProvider()` — no changes to `main.go` needed.
 
 ### Store
 
@@ -226,7 +226,7 @@ The core types live in `internal/domain/`:
 cmd/ai-coworker/              Entry point, wires all components
 internal/
   adapter/                    Channel adapter interface
-    adapter.go                EventHandler + Adapter interface
+    adapter.go                EventHandler + Adapter + VCSAware interfaces
     github/                   GitHub App webhook adapter
       github.go               Webhook handling, event parsing, user authz
       github_test.go          Adapter tests
@@ -269,7 +269,7 @@ internal/
       docker.go               Container create, exec, log capture, cleanup
       docker_test.go          Runtime tests
     kubernetes/               Kubernetes Job runtime
-      kubernetes.go           Job + ConfigMap create, watch, log read, cleanup
+      kubernetes.go           Job + Secret create, watch, log read, cleanup
       kubernetes_test.go      Runtime tests
   store/                      Data store interface + PostgreSQL implementation
     store.go                  Store interface (incl. ClaimPendingTasks)
