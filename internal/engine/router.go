@@ -36,6 +36,15 @@ func (r *Router) GetAdapter(name string) adapter.Adapter {
 	return r.adapters[name]
 }
 
+// Adapters returns all registered adapters.
+func (r *Router) Adapters() []adapter.Adapter {
+	result := make([]adapter.Adapter, 0, len(r.adapters))
+	for _, a := range r.adapters {
+		result = append(result, a)
+	}
+	return result
+}
+
 // HandleEvent processes incoming events: acknowledges receipt, ensures a
 // thread exists, records user messages, and creates pending tasks.
 // All events are acknowledged first, then all tasks are created back-to-back
