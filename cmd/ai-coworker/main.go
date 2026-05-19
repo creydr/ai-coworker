@@ -76,6 +76,7 @@ func main() {
 		go func() {
 			if err := slackAdapter.Start(ctx, router.HandleEvent); err != nil {
 				slog.Error("slack adapter stopped", "error", err)
+				cancel()
 			}
 		}()
 		slog.Info("slack adapter enabled")
@@ -92,6 +93,7 @@ func main() {
 		go func() {
 			if err := githubAdapter.Start(ctx, router.HandleEvent); err != nil {
 				slog.Error("github adapter stopped", "error", err)
+				cancel()
 			}
 		}()
 		slog.Info("github adapter enabled", "app_id", cfg.GitHub.AppID, "private_key_len", len(cfg.GitHub.PrivateKey))
@@ -115,6 +117,7 @@ func main() {
 		go func() {
 			if err := gdocsAdapter.Start(ctx, router.HandleEvent); err != nil {
 				slog.Error("googledocs adapter stopped", "error", err)
+				cancel()
 			}
 		}()
 		slog.Info("googledocs adapter enabled")
