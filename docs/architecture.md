@@ -83,7 +83,7 @@ The worker pool runs configurable goroutines (default: 4) that continuously clai
 
 **Review task batching:** When a worker claims a task classified as `review`, it waits briefly (500ms debounce) then calls `ClaimPendingTasks(threadID, workerID)` to absorb all remaining pending review tasks in the same thread. The absorbed tasks are merged into a single structured prompt with `--- COMMENT N ---` sections containing file path and line number context. After execution, the output is parsed by `--- COMMENT N ---` headers and individual responses are routed back to each original comment's channel reference. This avoids spinning up a separate sandbox container for each inline review comment.
 
-**Stale task reaper:** A background goroutine runs every 5 minutes and resets any `in_progress` task whose `updated_at` is older than 30 minutes back to `pending`. This recovers orphaned tasks left behind by crashed workers or timed-out executions, making them eligible for re-claiming by another worker.
+**Stale task reaper:** A background goroutine runs every 5 minutes and resets any `in_progress` task whose `updated_at` exceeds the configured sandbox timeout plus a 5-minute buffer back to `pending`. This recovers orphaned tasks left behind by crashed workers or timed-out executions, making them eligible for re-claiming by another worker. The threshold is derived from `sandbox.timeoutSeconds` to ensure the reaper never interferes with legitimately running tasks.
 
 ### Intent Classifier
 

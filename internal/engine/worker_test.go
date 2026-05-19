@@ -46,7 +46,7 @@ func newWorkerTestSetup() (*mockStore, *mockAdapter, *mockExecutor, *mockExecuto
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "code_task"})
 
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 	return ms, adapter, codeExec, llmExec, wp
 }
 
@@ -287,7 +287,7 @@ func TestWorker_IntentRouting_Question(t *testing.T) {
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "question"})
 
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 
 	thread := &domain.Thread{
 		ID: "thread-1",
@@ -334,7 +334,7 @@ func TestWorker_IntentRouting_InfoLookup(t *testing.T) {
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "info_lookup"})
 
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 
 	thread := &domain.Thread{
 		ID: "thread-1",
@@ -377,7 +377,7 @@ func TestWorker_IntentRouting_ReviewShortCircuit(t *testing.T) {
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "question"})
 
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 
 	thread := &domain.Thread{
 		ID: "thread-1",
@@ -672,7 +672,7 @@ func TestWorker_ReviewAbsorbsSiblings(t *testing.T) {
 		result: &executor.Result{Response: "llm"},
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "review"})
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 
 	thread := &domain.Thread{
 		ID: "thread-1",
@@ -916,7 +916,7 @@ func TestWorker_ExecutionError_SanitizedResponse(t *testing.T) {
 		result: &executor.Result{Response: "llm"},
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "code_task"})
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 
 	thread := &domain.Thread{
 		ID: "thread-1",
@@ -997,13 +997,15 @@ func TestWorker_ReaperCallsStore(t *testing.T) {
 	codeExec := &mockExecutor{result: &executor.Result{Response: "ok"}}
 	llmExec := &mockExecutor{result: &executor.Result{Response: "ok"}}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "code_task"})
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
+
+	wantThreshold := wp.staleThreshold()
 
 	var reapCalls atomic.Int32
 	ms.reapStaleTasksFunc = func(_ context.Context, threshold time.Duration) (int, error) {
 		reapCalls.Add(1)
-		if threshold != staleTaskThreshold {
-			t.Errorf("threshold = %v, want %v", threshold, staleTaskThreshold)
+		if threshold != wantThreshold {
+			t.Errorf("threshold = %v, want %v", threshold, wantThreshold)
 		}
 		return 2, nil
 	}
@@ -1021,7 +1023,7 @@ func TestWorker_ReaperCallsStore(t *testing.T) {
 
 	// runReaper waits for ticker — it won't fire with the cancelled context.
 	// Instead, test the store method directly.
-	n, err := wp.store.ReapStaleTasks(context.Background(), staleTaskThreshold)
+	n, err := wp.store.ReapStaleTasks(context.Background(), wantThreshold)
 	if err != nil {
 		t.Fatalf("ReapStaleTasks: %v", err)
 	}
@@ -1030,5 +1032,33 @@ func TestWorker_ReaperCallsStore(t *testing.T) {
 	}
 	if reapCalls.Load() < 1 {
 		t.Error("expected ReapStaleTasks to be called at least once")
+	}
+}
+
+func TestWorker_StaleThresholdDerivedFromTimeout(t *testing.T) {
+	ms := newMockStore()
+	router := NewRouter(ms)
+
+	tests := []struct {
+		name        string
+		taskTimeout time.Duration
+		want        time.Duration
+	}{
+		{"zero uses default 30m + buffer", 0, 30*time.Minute + staleTaskBuffer},
+		{"10m timeout", 10 * time.Minute, 10*time.Minute + staleTaskBuffer},
+		{"1h timeout", 1 * time.Hour, 1*time.Hour + staleTaskBuffer},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			codeExec := &mockExecutor{result: &executor.Result{Response: "ok"}}
+			llmExec := &mockExecutor{result: &executor.Result{Response: "ok"}}
+			classifier := NewIntentClassifier(&mockLLMProvider{response: "code_task"})
+			wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, tt.taskTimeout)
+
+			got := wp.staleThreshold()
+			if got != tt.want {
+				t.Errorf("staleThreshold() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
