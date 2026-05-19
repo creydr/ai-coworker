@@ -187,11 +187,16 @@ func (c *Config) validate() error {
 		if c.LLM.OpenAI.BaseURL == "" {
 			return fmt.Errorf("llm.openai.baseUrl is required for openai provider")
 		}
+	default:
+		return fmt.Errorf("llm.provider must be \"claude\", \"vertex\", or \"openai\", got %q", c.LLM.Provider)
 	}
 	switch c.Sandbox.Runtime {
 	case RuntimeDocker, RuntimeKubernetes:
 	default:
 		return fmt.Errorf("sandbox.runtime must be %q or %q, got %q", RuntimeDocker, RuntimeKubernetes, c.Sandbox.Runtime)
+	}
+	if c.Sandbox.Image == "" {
+		return fmt.Errorf("sandbox.image is required")
 	}
 	if c.Sandbox.Runtime == RuntimeKubernetes && c.Sandbox.Namespace == "" {
 		return fmt.Errorf("sandbox.namespace is required when sandbox.runtime is 'kubernetes'")

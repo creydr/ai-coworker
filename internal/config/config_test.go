@@ -17,7 +17,7 @@ func writeTempConfig(t *testing.T, content string) string {
 	return path
 }
 
-const minConfig = "database:\n  url: postgres://localhost/test\nllm:\n  provider: claude\n  apiKey: sk-test\n  model: claude-sonnet-4-6\n"
+const minConfig = "database:\n  url: postgres://localhost/test\nllm:\n  provider: claude\n  apiKey: sk-test\n  model: claude-sonnet-4-6\nsandbox:\n  image: quay.io/test/sandbox:latest\n"
 
 func TestLoad_Defaults(t *testing.T) {
 	path := writeTempConfig(t, minConfig)
@@ -48,20 +48,20 @@ func TestLoad_SandboxRuntimeValidation(t *testing.T) {
 	}{
 		{
 			name:   "docker runtime is valid",
-			config: minConfig + "sandbox:\n  runtime: docker\n",
+			config: minConfig + "  runtime: docker\n",
 		},
 		{
 			name:   "kubernetes runtime with namespace is valid",
-			config: minConfig + "sandbox:\n  runtime: kubernetes\n  namespace: ai-coworker\n",
+			config: minConfig + "  runtime: kubernetes\n  namespace: ai-coworker\n",
 		},
 		{
 			name:    "kubernetes runtime without namespace is invalid",
-			config:  minConfig + "sandbox:\n  runtime: kubernetes\n",
+			config:  minConfig + "  runtime: kubernetes\n",
 			wantErr: "sandbox.namespace is required",
 		},
 		{
 			name:    "unknown runtime is invalid",
-			config:  minConfig + "sandbox:\n  runtime: podman\n",
+			config:  minConfig + "  runtime: podman\n",
 			wantErr: "sandbox.runtime must be",
 		},
 	}
@@ -140,7 +140,7 @@ func TestLoad_NestedEnvVars(t *testing.T) {
 }
 
 func TestLoad_EnvVarOverridesConfigFile(t *testing.T) {
-	path := writeTempConfig(t, "llm:\n  provider: claude\n  apiKey: sk-test\n  model: old-model\ndatabase:\n  url: postgres://localhost/test\n")
+	path := writeTempConfig(t, "llm:\n  provider: claude\n  apiKey: sk-test\n  model: old-model\ndatabase:\n  url: postgres://localhost/test\nsandbox:\n  image: quay.io/test/sandbox:latest\n")
 
 	t.Setenv("AI_COWORKER__LLM__MODEL", "new-model")
 
@@ -154,5 +154,29 @@ func TestLoad_EnvVarOverridesConfigFile(t *testing.T) {
 	}
 	if cfg.LLM.Model != "new-model" {
 		t.Errorf("LLM.Model = %q, want %q (from env)", cfg.LLM.Model, "new-model")
+	}
+}
+
+func TestLoad_MissingSandboxImage(t *testing.T) {
+	config := "database:\n  url: postgres://localhost/test\nllm:\n  provider: claude\n  apiKey: sk-test\n  model: claude-sonnet-4-6\n"
+	path := writeTempConfig(t, config)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing sandbox.image, got nil")
+	}
+	if !strings.Contains(err.Error(), "sandbox.image is required") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "sandbox.image is required")
+	}
+}
+
+func TestLoad_UnknownProvider(t *testing.T) {
+	config := "database:\n  url: postgres://localhost/test\nllm:\n  provider: gemini\n  apiKey: sk-test\n  model: some-model\nsandbox:\n  image: quay.io/test/sandbox:latest\n"
+	path := writeTempConfig(t, config)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for unknown provider, got nil")
+	}
+	if !strings.Contains(err.Error(), "llm.provider must be") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "llm.provider must be")
 	}
 }
