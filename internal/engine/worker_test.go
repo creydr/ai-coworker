@@ -728,7 +728,7 @@ func TestWorker_ReviewAbsorbsSiblings(t *testing.T) {
 	if codeExec.capturedCtx == nil {
 		t.Fatal("code executor was not called")
 	}
-	if !strings.Contains(codeExec.capturedCtx.Task.Input, "multiple comments") {
+	if !strings.Contains(codeExec.capturedCtx.Event.Content, "multiple comments") {
 		t.Error("merged input should mention multiple comments")
 	}
 
@@ -806,7 +806,7 @@ func TestWorker_BatchedCompletionUpdateFailure(t *testing.T) {
 	ms.threads["thread-1"] = thread
 
 	ms.updateTaskFunc = func(_ context.Context, t *domain.Task) error {
-		if t.Status == domain.TaskCompleted {
+		if t.ID == "task-2" && t.Status == domain.TaskCompleted {
 			return fmt.Errorf("database unavailable")
 		}
 		return nil
@@ -832,12 +832,72 @@ func TestWorker_BatchedCompletionUpdateFailure(t *testing.T) {
 			Input:    "also this",
 			Metadata: map[string]string{"type": "review_comment"},
 		},
+		{
+			ID:       "task-3",
+			ThreadID: "thread-1",
+			Status:   domain.TaskInProgress,
+			Input:    "and this too",
+			Metadata: map[string]string{"type": "review_comment"},
+		},
 	}
 
 	allTasks := append([]*domain.Task{primary}, absorbed...)
 	err := wp.routeBatchedResponses(context.Background(), thread, allTasks, "response")
 	if err == nil {
 		t.Fatal("expected error from routeBatchedResponses when completion update fails")
+	}
+
+	if len(adpt.responseCalls) != 3 {
+		t.Errorf("expected 3 response calls (all tasks routed despite error), got %d", len(adpt.responseCalls))
+	}
+}
+
+func TestWorker_ProcessTask_DoesNotMutateTaskInput(t *testing.T) {
+	ms, _, codeExec, _, wp := newWorkerTestSetup()
+
+	thread := &domain.Thread{
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#10",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "10",
+			},
+		},
+		Status: domain.ThreadActive,
+	}
+	ms.threads["thread-1"] = thread
+
+	originalInput := "fix the first bug"
+	task := &domain.Task{
+		ID:       "task-1",
+		ThreadID: "thread-1",
+		Status:   domain.TaskInProgress,
+		Input:    originalInput,
+		Metadata: map[string]string{"type": "review"},
+	}
+
+	ms.claimPendingTasksFunc = func(_ context.Context, _, _ string) ([]*domain.Task, error) {
+		return []*domain.Task{
+			{
+				ID:       "task-2",
+				ThreadID: "thread-1",
+				Status:   domain.TaskPending,
+				Input:    "fix the second bug",
+				Metadata: map[string]string{"type": "review_comment"},
+			},
+		}, nil
+	}
+
+	codeExec.result = &executor.Result{
+		Response: "--- COMMENT 1 ---\nfixed first\n\n--- COMMENT 2 ---\nfixed second",
+	}
+
+	wp.processTask(context.Background(), "worker-0", task)
+
+	if task.Input != originalInput {
+		t.Errorf("task.Input was mutated: got %q, want %q", task.Input, originalInput)
 	}
 }
 
