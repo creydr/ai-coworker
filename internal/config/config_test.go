@@ -180,3 +180,44 @@ func TestLoad_UnknownProvider(t *testing.T) {
 		t.Errorf("error = %q, want to contain %q", err.Error(), "llm.provider must be")
 	}
 }
+
+func TestLoad_OpenAIValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  string
+		wantErr string
+	}{
+		{
+			name:    "missing baseUrl",
+			config:  "database:\n  url: postgres://localhost/test\nllm:\n  provider: openai\n  apiKey: sk-test\n  model: gpt-4\nsandbox:\n  image: quay.io/test/sandbox:latest\n",
+			wantErr: "llm.openai.baseUrl is required for openai provider",
+		},
+		{
+			name:   "valid openai config with apiKey",
+			config: "database:\n  url: postgres://localhost/test\nllm:\n  provider: openai\n  apiKey: sk-test\n  model: gpt-4\n  openai:\n    baseUrl: https://api.example.com/v1\nsandbox:\n  image: quay.io/test/sandbox:latest\n",
+		},
+		{
+			name:   "valid openai config without apiKey",
+			config: "database:\n  url: postgres://localhost/test\nllm:\n  provider: openai\n  model: qwen3:1.7b\n  openai:\n    baseUrl: http://localhost:11434/v1\nsandbox:\n  image: quay.io/test/sandbox:latest\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeTempConfig(t, tt.config)
+			_, err := Load(path)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
