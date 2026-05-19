@@ -5,11 +5,22 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/creydr/ai-coworker/internal/domain"
 	"github.com/creydr/ai-coworker/internal/executor"
 	"github.com/creydr/ai-coworker/internal/llm"
 )
+
+type blockingExecutor struct {
+	started chan struct{}
+}
+
+func (b *blockingExecutor) Execute(ctx context.Context, _ *executor.Context) (*executor.Result, error) {
+	close(b.started)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
 
 type mockExecutor struct {
 	capturedCtx *executor.Context
@@ -44,7 +55,7 @@ func newWorkerTestSetup() (*mockStore, *mockAdapter, *mockExecutor, *mockExecuto
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "code_task"})
 
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 	return ms, adapter, codeExec, llmExec, wp
 }
 
@@ -285,7 +296,7 @@ func TestWorker_IntentRouting_Question(t *testing.T) {
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "question"})
 
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 
 	thread := &domain.Thread{
 		ID: "thread-1",
@@ -332,7 +343,7 @@ func TestWorker_IntentRouting_InfoLookup(t *testing.T) {
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "info_lookup"})
 
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 
 	thread := &domain.Thread{
 		ID: "thread-1",
@@ -375,7 +386,7 @@ func TestWorker_IntentRouting_ReviewShortCircuit(t *testing.T) {
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "question"})
 
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 
 	thread := &domain.Thread{
 		ID: "thread-1",
@@ -670,7 +681,7 @@ func TestWorker_ReviewAbsorbsSiblings(t *testing.T) {
 		result: &executor.Result{Response: "llm"},
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "review"})
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 
 	thread := &domain.Thread{
 		ID: "thread-1",
@@ -914,7 +925,7 @@ func TestWorker_ExecutionError_SanitizedResponse(t *testing.T) {
 		result: &executor.Result{Response: "llm"},
 	}
 	classifier := NewIntentClassifier(&mockLLMProvider{response: "code_task"})
-	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1)
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 0)
 
 	thread := &domain.Thread{
 		ID: "thread-1",
@@ -952,6 +963,54 @@ func TestWorker_ExecutionError_SanitizedResponse(t *testing.T) {
 	}
 	if !strings.Contains(response, "Sorry") {
 		t.Errorf("expected user-friendly error message, got: %q", response)
+	}
+}
+
+func TestWorker_TaskTimeout(t *testing.T) {
+	ms := newMockStore()
+	adapter := &mockAdapter{name: "github"}
+	router := NewRouter(ms)
+	router.RegisterAdapter(adapter)
+
+	codeExec := &mockExecutor{
+		result: &executor.Result{Response: "done"},
+	}
+	llmExec := &mockExecutor{
+		result: &executor.Result{Response: "done"},
+	}
+	classifier := NewIntentClassifier(&mockLLMProvider{response: "code_task"})
+
+	// Use a very short timeout so the blocking executor trips it.
+	wp := NewWorkerPool(ms, router, classifier, codeExec, llmExec, 1, 1*time.Millisecond)
+
+	blockingExec := &blockingExecutor{started: make(chan struct{})}
+	wp.executors[domain.IntentCodeTask] = blockingExec
+
+	thread := &domain.Thread{
+		ID: "thread-1",
+		ChannelRef: domain.ChannelRef{
+			Channel:   "github",
+			ThreadKey: "org/repo#1",
+			Properties: map[string]string{
+				"repo":      "org/repo",
+				"issue_num": "1",
+			},
+		},
+		Status: domain.ThreadActive,
+	}
+	ms.threads["thread-1"] = thread
+
+	task := &domain.Task{
+		ID:       "task-1",
+		ThreadID: "thread-1",
+		Status:   domain.TaskInProgress,
+		Input:    "slow task",
+	}
+
+	wp.processTask(context.Background(), "worker-0", task)
+
+	if task.Status != domain.TaskFailed {
+		t.Errorf("task.Status = %q, want %q", task.Status, domain.TaskFailed)
 	}
 }
 

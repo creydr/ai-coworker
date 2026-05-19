@@ -40,6 +40,7 @@ type WorkerPool struct {
 	executors   map[domain.Intent]executor.Executor
 	defaultExec executor.Executor
 	numWorkers  int
+	taskTimeout time.Duration
 	wg          sync.WaitGroup
 }
 
@@ -51,6 +52,7 @@ func NewWorkerPool(
 	codeExec executor.Executor,
 	llmExec executor.Executor,
 	numWorkers int,
+	taskTimeout time.Duration,
 ) *WorkerPool {
 	return &WorkerPool{
 		store:      s,
@@ -63,6 +65,7 @@ func NewWorkerPool(
 		},
 		defaultExec: llmExec,
 		numWorkers:  numWorkers,
+		taskTimeout: taskTimeout,
 	}
 }
 
@@ -166,7 +169,13 @@ func (wp *WorkerPool) processTask(ctx context.Context, workerID string, task *do
 	}
 
 	slog.Info("executing task", "worker", workerID, "task", task.ID, "intent", intent, "thread", thread.ChannelRef.ThreadKey)
-	result, err := exec.Execute(ctx, execCtx)
+	execCtxTimeout := ctx
+	if wp.taskTimeout > 0 {
+		var cancel context.CancelFunc
+		execCtxTimeout, cancel = context.WithTimeout(ctx, wp.taskTimeout)
+		defer cancel()
+	}
+	result, err := exec.Execute(execCtxTimeout, execCtx)
 	if err != nil {
 		wp.failTask(ctx, workerID, task, fmt.Errorf("executing task: %w", err))
 		wp.sendResponse(ctx, thread.ChannelRef, "Sorry, I encountered an error while processing your request. Please try again later.")
