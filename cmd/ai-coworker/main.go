@@ -164,7 +164,9 @@ func main() {
 		}
 		sandboxEnv["GOOGLE_APPLICATION_CREDENTIALS_JSON"] = string(adcContent)
 	case "openai":
-		sandboxEnv["OPENAI_API_KEY"] = cfg.LLM.APIKey
+		if cfg.LLM.APIKey != "" {
+			sandboxEnv["OPENAI_API_KEY"] = cfg.LLM.APIKey
+		}
 		if cfg.LLM.OpenAI.BaseURL != "" {
 			sandboxEnv["OPENAI_BASE_URL"] = cfg.LLM.OpenAI.BaseURL
 		}

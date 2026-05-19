@@ -184,9 +184,6 @@ func (c *Config) validate() error {
 			return fmt.Errorf("llm.vertex.projectId is required for vertex provider")
 		}
 	case "openai":
-		if c.LLM.APIKey == "" {
-			return fmt.Errorf("llm.apiKey is required for openai provider")
-		}
 		if c.LLM.OpenAI.BaseURL == "" {
 			return fmt.Errorf("llm.openai.baseUrl is required for openai provider")
 		}
