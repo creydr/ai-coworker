@@ -14,7 +14,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.5
 	github.com/openai/openai-go v1.12.0
-	github.com/slack-go/slack v0.25.0
+	github.com/slack-go/slack v0.26.0
 	golang.org/x/sync v0.21.0
 	google.golang.org/api v0.284.0
 	k8s.io/api v0.36.1
