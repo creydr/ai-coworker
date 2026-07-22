@@ -3,7 +3,7 @@ module github.com/creydr/ai-coworker
 go 1.26.2
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.57.0
+	github.com/anthropics/anthropic-sdk-go v1.58.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.19.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/google/go-github/v68 v68.0.0
