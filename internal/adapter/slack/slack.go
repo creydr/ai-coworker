@@ -101,10 +101,11 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 		}
 	}()
 
-	if err := a.socketClient.RunContext(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		return err
+	err = a.socketClient.RunContext(ctx)
+	if errors.Is(err, context.Canceled) {
+		return nil
 	}
-	return nil
+	return err
 }
 
 func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, message string) error {
