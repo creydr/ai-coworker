@@ -7,10 +7,9 @@ updates:
       interval: "daily"
     open-pull-requests-limit: 10
     groups:
-      kubernetes:
+      golang:
         patterns:
-          - "k8s.io/*"
-          - "sigs.k8s.io/*"
+          - "*"
 
   # GitHub Actions - weekly, grouped
   - package-ecosystem: "github-actions"
