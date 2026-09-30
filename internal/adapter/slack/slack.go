@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -100,7 +101,10 @@ func (a *Adapter) Start(ctx context.Context, handler adapter.EventHandler) error
 		}
 	}()
 
-	return a.socketClient.RunContext(ctx)
+	if err := a.socketClient.RunContext(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		return err
+	}
+	return nil
 }
 
 func (a *Adapter) SendResponse(ctx context.Context, ref domain.ChannelRef, message string) error {
